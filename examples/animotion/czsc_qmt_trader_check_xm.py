@@ -145,7 +145,6 @@ if "个股择时" == mode:
         addinfo(info_=detail['InstrumentName'], color_='red')
         # addinfo(info_='市值31.99亿', color_='yellow')
         # addinfo(info_='概念：军工', color_='red')
-
         markdown_msg = '，'.join(infos)
         st.markdown(markdown_msg, unsafe_allow_html=True)
 
