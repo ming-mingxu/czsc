@@ -68,9 +68,9 @@ class KlineChart:
         """绘制K线"""
         if 'text' not in kline.columns:
             kline['text'] = ""
-
+        visible = True if kwargs.get('visible', True) else 'legendonly'
         candle = go.Candlestick(x=kline['dt'], open=kline["open"], high=kline["high"], low=kline["low"],
-                                close=kline["close"], text=kline["text"], name=name, showlegend=True,
+                                close=kline["close"], text=kline["text"], name=name, visible=visible, showlegend=True,
                                 increasing_line_color=self.color_red, decreasing_line_color=self.color_green,
                                 increasing_fillcolor=self.color_red, decreasing_fillcolor=self.color_green)
         self.fig.add_trace(candle, row=1, col=1)

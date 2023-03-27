@@ -125,20 +125,23 @@ with st.sidebar:
 
     pool = st.selectbox("股票池", options=get_pools(), index=0)
     selected_symbols_df, last_symbols = get_pool_symbols(pool, sdt, edt)
-    mode = st.selectbox("模式", options=("个股择时", "选股分析", "选股+择时分析"), index=0)
+    mode = st.selectbox("模式", options=("个股择时", "选股分析", "选股+择时分析", "行情查看"), index=0)
     # if "个股择时" == mode:
 
 if "个股择时" == mode:
-    c1, c2 = st.columns([3,15],gap="large")
+    c1, c2 = st.columns([3, 15], gap="large")
     with c1:
         symbol = st.selectbox("选择合约", options=last_symbols, index=0)
     with c2:
         title = "合约信息"
         st.text(title)
         infos = []
+
+
         def addinfo(info_='', color_='green'):
             # infos.append(f'<span style="font-family:黑体; color:{color_}; font-size: 15px;">{info_}</span>')
             infos.append(f'<span style="color:{color_};">{info_}</span>')
+
 
         detail = qmc.get_instrument_detail(symbol)
 
@@ -156,11 +159,14 @@ if "个股择时" == mode:
     tactic: CzscStrategyBase = czsc_strategy(symbol=symbol)
     freqs = freqs_sorted(tactic.freqs)
     # print(freqs)
-    bars = qmc.get_raw_bars(symbol, freqs[0], sdt=sdt, edt=edt)
     mdt = max(sdt, edt - pd.Timedelta(days=60))
+    edt_ = pd.Timestamp(edt).replace(hour=15)
+    bars = qmc.get_raw_bars(symbol, freqs[0], sdt=sdt, edt=edt_)
+    # print(edt)
+    # print(bars[-1])
+
     trader: CzscTrader = tactic.init_trader(bars, sdt=mdt)
     # print(trader.positions[0].pairs)
-
     #########trader end
     tabnames = []
     tabnames.extend(freqs)
@@ -177,7 +183,10 @@ if "个股择时" == mode:
         df = pd.DataFrame(c.bars_raw)
         df['text'] = "测试"
         kline = KlineChart(n_rows=4, title='', width="100%", height=500)  # ming title=f"{freq} K线" to '',再添加height
-        kline.add_kline(df, name="")  # ming name='' from "K线"
+        kline.add_kline(df, name="",visible=False)  # ming name='' from "K线"
+        kline.add_sma(df, ma_seq=(5, 10, 21), row=1, visible=True, line_width=0.6)  # ming add line_width
+        kline.add_sma(df, ma_seq=(34, 55, 89, 144), row=1, visible=False, line_width=0.6)  # ming add line_width
+
         if len(c.bi_list) > 0:
             bi = pd.DataFrame(
                 [{'dt': x.fx_a.dt, "bi": x.fx_a.fx, "text": x.fx_a.mark.value} for x in c.bi_list] +
@@ -187,8 +196,7 @@ if "个股择时" == mode:
             kline.add_scatter_indicator(fx['dt'], fx['fx'], name="分型", row=1, line_width=0.6, visible=False)  # ming line_width from 1.2 to 0.6 ,add visibal
             kline.add_scatter_indicator(bi['dt'], bi['bi'], name="笔", text='', row=1, line_width=1.5)  # ming text=bi['text'] to ''
 
-        kline.add_sma(df, ma_seq=(5, 10, 21), row=1, visible=True, line_width=0.6)  # ming add line_width
-        kline.add_sma(df, ma_seq=(34, 55, 89, 144), row=1, visible=False, line_width=0.6)  # ming add line_width
+
         kline.add_vol(df, row=2, line_width=1)
         kline.add_macd(df, row=3, line_width=1)
         s, m, l, bar = indicator_xm(df)  # s,m,l分别是短，中，长线型指标，b是bar型指标
@@ -306,3 +314,28 @@ if "选股+择时分析" == mode:
     st.write(selected_symbols_df)
 
     # todo 对selected_symbols_df进行选股+择时收益分析
+
+if "行情查看" == mode:
+    from czsc.data.ts_cache import update_bars_return
+
+    if '全市场' != pool:
+        sdt_ = pd.Timestamp(edt) - pd.Timedelta(days=30)
+
+        edt_ = pd.Timestamp(edt).replace(hour=15)
+        klines = pd.DataFrame()
+        for symbol in selected_symbols_df['symbol'][:]:
+            kline = qmc.get_kline(symbol, '1d', sdt_, edt_, df=True)
+            # bars.pop('freq')
+            # print(kline)
+            # kline = pd.DataFrame(bars)
+            detail = qmc.get_instrument_detail(symbol)
+
+            kline['名称'] = detail['InstrumentName']
+
+            kline['收盘价'] = kline['close']
+            kline['前收盘价'] = kline['close'].shift(1)
+            kline['涨幅'] = (kline['收盘价'] / kline['前收盘价'] - 1) * 100
+            klines = pd.concat([klines, kline[['symbol', '名称', '前收盘价', '收盘价', '涨幅']].iloc[-1:]], ignore_index=True).reset_index(drop=True)
+            # update_bars_return(kline)
+        st.write(f'平均涨幅：{round(klines["涨幅"].mean(),2)}')
+        st.table(klines)  # ['symbol','dt','open','close','high','low','vol','amount',''])
