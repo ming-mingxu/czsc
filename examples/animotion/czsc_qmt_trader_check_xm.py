@@ -90,14 +90,14 @@ def get_pool_symbols(poolname, sdt_, edt_):
     """
     pathname = os.path.join(pool_path, f'{poolname}.csv')
 
-    all_df = pd.read_csv(pathname,converters={'symbol':str}, parse_dates=['dt'] )
+    all_df = pd.read_csv(pathname, converters={'symbol': str}, parse_dates=['dt'])
     # print(all_df.head())
     # print(all_df['dt'].isna())
-    #csv文件中，dt为空的票，表示一直持有，所以下面代码将他们都选上
+    # csv文件中，dt为空的票，表示一直持有，所以下面代码将他们都选上
     selected_symbols_df = all_df[(all_df['dt'] >= pd.Timestamp(sdt_)) & (all_df['dt'] <= pd.Timestamp(edt_)) | (all_df['dt'].isna())]
     last_symbols_df = selected_symbols_df[(selected_symbols_df['dt'] == selected_symbols_df['dt'].max()) | (selected_symbols_df['dt'].isna())]
 
-    return selected_symbols_df,last_symbols_df['symbol']
+    return selected_symbols_df, last_symbols_df['symbol']
 
 
 # sidebar好像还没效果
@@ -124,14 +124,31 @@ with st.sidebar:
     strategy_name = st.selectbox("择时策略", options=strategys, index=0)
 
     pool = st.selectbox("股票池", options=get_pools(), index=0)
-    selected_symbols_df,last_symbols = get_pool_symbols(pool,sdt,edt)
+    selected_symbols_df, last_symbols = get_pool_symbols(pool, sdt, edt)
     mode = st.selectbox("模式", options=("个股择时", "选股分析", "选股+择时分析"), index=0)
-    if "个股择时" == mode:
-        symbol = st.selectbox("选择合约", options=last_symbols, index=0)
-
-
+    # if "个股择时" == mode:
 
 if "个股择时" == mode:
+    c1, c2 = st.columns([3,15],gap="large")
+    with c1:
+        symbol = st.selectbox("选择合约", options=last_symbols, index=0)
+    with c2:
+        title = "合约信息"
+        st.text(title)
+        infos = []
+        def addinfo(info_='', color_='green'):
+            # infos.append(f'<span style="font-family:黑体; color:{color_}; font-size: 15px;">{info_}</span>')
+            infos.append(f'<span style="color:{color_};">{info_}</span>')
+
+        detail = qmc.get_instrument_detail(symbol)
+
+        addinfo(info_=detail['InstrumentName'], color_='red')
+        # addinfo(info_='市值31.99亿', color_='yellow')
+        # addinfo(info_='概念：军工', color_='red')
+
+        markdown_msg = '，'.join(infos)
+        st.markdown(markdown_msg, unsafe_allow_html=True)
+
     #########trader begin
     # strategy_name = 'corab.CzscStocksV230316'
     # print(strategy_name)
@@ -160,7 +177,7 @@ if "个股择时" == mode:
         c = trader.kas[freq]
         df = pd.DataFrame(c.bars_raw)
         df['text'] = "测试"
-        kline = KlineChart(n_rows=4, title='', width="100%", height=600)  # ming title=f"{freq} K线" to '',再添加height
+        kline = KlineChart(n_rows=4, title='', width="100%", height=500)  # ming title=f"{freq} K线" to '',再添加height
         kline.add_kline(df, name="")  # ming name='' from "K线"
         if len(c.bi_list) > 0:
             bi = pd.DataFrame(
@@ -283,11 +300,10 @@ if "个股择时" == mode:
     i += 1
 if "选股分析" == mode:
     st.write(selected_symbols_df)
-    #todo 对selected_symbols_df进行选股收益分析
-
+    # todo 对selected_symbols_df进行选股收益分析
 
 if "选股+择时分析" == mode:
     st.write(strategy_name)
     st.write(selected_symbols_df)
 
-    #todo 对selected_symbols_df进行选股+择时收益分析
+    # todo 对selected_symbols_df进行选股+择时收益分析

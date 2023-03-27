@@ -61,6 +61,11 @@ def format_stock_kline(kline: pd.DataFrame, freq: Freq) -> List[RawBar]:
         bars.append(bar)
     return bars
 
+def get_instrument_detail(symbol):
+    """获取个股基本信息
+    http://docs.thinktrader.net/pages/36f5df/#%E8%8E%B7%E5%8F%96%E5%90%88%E7%BA%A6%E5%9F%BA%E7%A1%80%E4%BF%A1%E6%81%AF
+    """
+    return xtdata.get_instrument_detail(symbol)
 
 def get_kline(symbol, period, start_time, end_time, count=-1, dividend_type='front_ratio', **kwargs):
     """获取 QMT K线数据，实盘、回测通用
@@ -142,7 +147,6 @@ def get_raw_bars(symbol, freq, sdt, edt, fq='前复权', **kwargs):
     kline['vol'] = kline['volume']
     bars = resample_bars(kline, freq, raw_bars=True)
     return bars
-
 
 def get_symbols(step):
     """获取择时策略投研不同阶段对应的标的列表
