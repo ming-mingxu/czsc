@@ -185,7 +185,7 @@ if "个股择时" == mode:
         df = pd.DataFrame(c.bars_raw)
         df['text'] = "测试"
         kline = KlineChart(n_rows=4, title='', width="100%", height=500)  # ming title=f"{freq} K线" to '',再添加height
-        kline.add_kline(df, name="",visible=False)  # ming name='' from "K线"
+        kline.add_kline(df, name="", visible=False)  # ming name='' from "K线"
         kline.add_sma(df, ma_seq=(5, 10, 21), row=1, visible=True, line_width=0.6)  # ming add line_width
         kline.add_sma(df, ma_seq=(34, 55, 89, 144), row=1, visible=False, line_width=0.6)  # ming add line_width
 
@@ -198,11 +198,10 @@ if "个股择时" == mode:
             kline.add_scatter_indicator(fx['dt'], fx['fx'], name="分型", row=1, line_width=0.6, visible=False)  # ming line_width from 1.2 to 0.6 ,add visibal
             kline.add_scatter_indicator(bi['dt'], bi['bi'], name="笔", text='', row=1, line_width=1.5)  # ming text=bi['text'] to ''
 
-
         kline.add_vol(df, row=2, line_width=1)
         kline.add_macd(df, row=3, line_width=1)
         s, m, l, bar = indicator_xm(df)  # s,m,l分别是短，中，长线型指标，b是bar型指标
-        kline.add_indicator(dt=df['dt'], scatters=[s, m, l], scatternames=['短', '中', '长'], bar=bar, barname='柱', row=4)
+        kline.add_indicator(dt=df['dt'], scatters=[s, m, l], scatter_names=['短', '中', '长'], bar=bar, bar_name='柱', row=4)
         # 买卖点begin
         from czsc.utils.bar_generator import freq_end_time
 
@@ -222,13 +221,11 @@ if "个股择时" == mode:
                     bs.append(_op)
         bs_df = pd.DataFrame(bs)
         if not bs_df.empty:
-            kline.add_marker_indicator(bs_df['dt'], bs_df['price'], name='OP', text=bs_df['op_desc'], row=1,
-                                       line_width=0.5, tag=bs_df['tag'], color=bs_df['color'])
+            kline.add_marker_indicator(bs_df['dt'], bs_df['price'], name='OP', text=bs_df['op_desc'], row=1, line_width=0.5, tag=bs_df['tag'], color=bs_df['color'])
         # 买卖点end
 
         with tabs[i]:
-            st.plotly_chart(kline.fig, use_container_width=True,
-                            config=config)  # ming 删除height，height通过构造函数送入，在里面通过updatelayout实现
+            st.plotly_chart(kline.fig, use_container_width=True, config=config)  # ming 删除height，height通过构造函数送入，在里面通过updatelayout实现
         i += 1
 
     # 信号页
@@ -341,5 +338,5 @@ if "行情查看" == mode:
             kline['涨幅'] = (kline['收盘价'] / kline['前收盘价'] - 1) * 100
             klines = pd.concat([klines, kline[['symbol', '名称', '前收盘价', '收盘价', '涨幅']].iloc[-1:]], ignore_index=True).reset_index(drop=True)
             # update_bars_return(kline)
-        st.write(f'平均涨幅：{round(klines["涨幅"].mean(),2)}')
+        st.write(f'平均涨幅：{round(klines["涨幅"].mean(), 2)}')
         st.table(klines)  # ['symbol','dt','open','close','high','low','vol','amount',''])
