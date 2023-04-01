@@ -51,8 +51,11 @@ with st.sidebar:
     symbol = st.selectbox("选择合约", options=qmc.get_symbols('stock'), index=0)
     sdt = st.date_input("开始日期", value=datetime(2015, 1, 1))
     edt = st.date_input("结束日期", value=datetime.now())
-    freqs = st.multiselect("选择周期", options=['1分钟', '5分钟', '15分钟', '30分钟', '60分钟', '日线', '周线', '月线'],
-                           default=['15分钟', '30分钟', '60分钟', '日线', '周线'])  # ming from 频率 to 周期 ,default修改
+    freqs = st.multiselect("选择周期",
+                           options=['1分钟', '5分钟', '15分钟', '30分钟', '60分钟', '日线', '周线',
+                                    '月线'],
+                           default=['15分钟', '30分钟', '60分钟', '日线',
+                                    '周线'])  # ming from 频率 to 周期 ,default修改
     freqs = freqs_sorted(freqs)
 
 bars = qmc.get_raw_bars(symbol, freqs[0], sdt=sdt, edt=edt)
@@ -70,14 +73,15 @@ for i, freq in enumerate(freqs):
     c = cs.kas[freq]
     df = pd.DataFrame(c.bars_raw)
     df['text'] = "测试"
-    kline = KlineChart(n_rows=4, title='', width="100%", height=700)  # ming title=f"{freq} K线" to '',再添加height
-    kline.add_kline(df, name="")  # ming name='' from "K线"
-    kline.add_sma(df, ma_seq=(5, 10, 21), row=1, visible=True, line_width=0.6)  # ming add line_width
-    kline.add_sma(df, ma_seq=(34, 55, 89, 144), row=1, visible=False, line_width=0.6)  # ming add line_width
+    kline = KlineChart(n_rows=4, title='', width="100%", height=700)
+    kline.add_kline(df, name="")
+    kline.add_sma(df, ma_seq=(5, 10, 21), row=1, visible=True, line_width=0.6)
+    kline.add_sma(df, ma_seq=(34, 55, 89, 144), row=1, visible=False, line_width=0.6)
     kline.add_vol(df, row=2, line_width=1)
     kline.add_macd(df, row=3, line_width=1)
     s, m, l, bar = indicator_xm(df)  # s,m,l分别是短，中，长线型指标，b是bar型指标
-    kline.add_indicator(dt=df['dt'], scatters=[s, m, l], scatternames=['短', '中', '长'], bar=bar, barname='柱', row=4)
+    kline.add_indicator(dt=df['dt'], scatters=[s, m, l], scatternames=['短', '中', '长'], bar=bar,
+                        barname='柱', row=4)
 
     if len(c.bi_list) > 0:
         bi = pd.DataFrame(
@@ -85,7 +89,8 @@ for i, freq in enumerate(freqs):
             [{'dt': c.bi_list[-1].fx_b.dt, "bi": c.bi_list[-1].fx_b.fx,
               "text": c.bi_list[-1].fx_b.mark.value}])
         fx = pd.DataFrame([{'dt': x.dt, "fx": x.fx} for x in c.fx_list])
-        kline.add_scatter_indicator(fx['dt'], fx['fx'], name="分型", row=1, line_width=1.2, visible=False, line_dash='dash')
+        kline.add_scatter_indicator(fx['dt'], fx['fx'], name="分型", row=1, line_width=1.2,
+                                    visible=False, line_dash='dash')
         kline.add_scatter_indicator(bi['dt'], bi['bi'], name="笔", text='', row=1, line_width=1.8)
 
     with tabs[i]:
