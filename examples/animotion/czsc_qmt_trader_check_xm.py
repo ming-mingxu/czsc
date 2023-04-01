@@ -94,8 +94,10 @@ def get_pool_symbols(poolname, sdt_, edt_):
     # print(all_df.head())
     # print(all_df['dt'].isna())
     # csv文件中，dt为空的票，表示一直持有，所以下面代码将他们都选上
-    selected_symbols_df = all_df[(all_df['dt'] >= pd.Timestamp(sdt_)) & (all_df['dt'] <= pd.Timestamp(edt_)) | (all_df['dt'].isna())]
-    last_symbols_df = selected_symbols_df[(selected_symbols_df['dt'] == selected_symbols_df['dt'].max()) | (selected_symbols_df['dt'].isna())]
+    selected_symbols_df = all_df[
+        (all_df['dt'] >= pd.Timestamp(sdt_)) & (all_df['dt'] <= pd.Timestamp(edt_)) | (all_df['dt'].isna())]
+    last_symbols_df = selected_symbols_df[
+        (selected_symbols_df['dt'] == selected_symbols_df['dt'].max()) | (selected_symbols_df['dt'].isna())]
 
     return selected_symbols_df, last_symbols_df['symbol']
 
@@ -220,11 +222,13 @@ if "个股择时" == mode:
                     bs.append(_op)
         bs_df = pd.DataFrame(bs)
         if not bs_df.empty:
-            kline.add_marker_indicator(bs_df['dt'], bs_df['price'], name='OP', text=bs_df['op_desc'], row=1, line_width=0.5, tag=bs_df['tag'], color=bs_df['color'])
+            kline.add_marker_indicator(bs_df['dt'], bs_df['price'], name='OP', text=bs_df['op_desc'], row=1,
+                                       line_width=0.5, tag=bs_df['tag'], color=bs_df['color'])
         # 买卖点end
 
         with tabs[i]:
-            st.plotly_chart(kline.fig, use_container_width=True, config=config)  # ming 删除height，height通过构造函数送入，在里面通过updatelayout实现
+            st.plotly_chart(kline.fig, use_container_width=True,
+                            config=config)  # ming 删除height，height通过构造函数送入，在里面通过updatelayout实现
         i += 1
 
     # 信号页
