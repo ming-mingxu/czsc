@@ -130,7 +130,7 @@ with st.sidebar:
     pool = st.selectbox("股票池", options=get_pools(), index=0)
     selected_symbols_df, last_symbols = get_pool_symbols(pool, sdt, edt)
     mode = st.selectbox("模式", options=("个股择时", "选股分析", "选股+择时分析", "行情查看"),
-                        index=0)
+                        index=3)
     # if "个股择时" == mode:
 
 if "个股择时" == mode:
@@ -226,7 +226,7 @@ if "个股择时" == mode:
                         _op['color'] = 'red'
                     else:
                         _op['tag'] = 'triangle-down'
-                        _op['color'] = 'silver'
+                        _op['color'] = 'green'
                     bs.append(_op)
         bs_df = pd.DataFrame(bs)
         if not bs_df.empty:
@@ -346,13 +346,14 @@ if "行情查看" == mode:
             detail = qmc.get_instrument_detail(symbol)
 
             kline['名称'] = detail['InstrumentName']
+            kline['IPO日期'] = detail['OpenDate']
 
             kline['收盘价'] = kline['close']
             kline['前收盘价'] = kline['close'].shift(1)
             kline['涨幅'] = (kline['收盘价'] / kline['前收盘价'] - 1) * 100
             klines = pd.concat(
-                [klines, kline[['symbol', '名称', '前收盘价', '收盘价', '涨幅']].iloc[-1:]],
+                [klines, kline[['symbol', '名称', '前收盘价', '收盘价', '涨幅','IPO日期']].iloc[-1:]],
                 ignore_index=True).reset_index(drop=True)
             # update_bars_return(kline)
-        st.write(f'平均涨幅：{round(klines["涨幅"].mean(), 2)}')
+        st.write(f'{pool}股票池#平均涨幅：{round(klines["涨幅"].mean(), 2)}')
         st.table(klines)  # ['symbol','dt','open','close','high','low','vol','amount',''])
