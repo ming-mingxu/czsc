@@ -40,8 +40,7 @@ class KlineChart:
                             horizontal_spacing=0, vertical_spacing=0)
         fig = fig.update_yaxes(showgrid=True, zeroline=False, automargin=True,
                                fixedrange=kwargs.get('y_fixed_range', True))
-        fig = fig.update_xaxes(type='category', rangeslider_visible=False, showgrid=False,
-                               automargin=True,
+        fig = fig.update_xaxes(type='category', rangeslider_visible=False, showgrid=False, automargin=True,
                                showticklabels=False)
 
         # https://plotly.com/python/reference/layout/
@@ -51,11 +50,10 @@ class KlineChart:
                 l=0,  # left margin
                 r=0,  # right margin
                 b=0,  # bottom margin
-                t=0  # top margin
+                t=0   # top margin
             ),
             # https://plotly.com/python/reference/layout/#layout-legend
-            legend=dict(orientation='h', yanchor="top", y=1.05, xanchor="left", x=0,
-                        bgcolor='rgba(0,0,0,0)'),
+            legend=dict(orientation='h', yanchor="top", y=1.05, xanchor="left", x=0, bgcolor='rgba(0,0,0,0)'),
             template="plotly_dark",
             hovermode="x unified",
             hoverlabel=dict(bgcolor='rgba(255,255,255,0.1)'),  # 透明，更容易看清后面k线
@@ -69,23 +67,18 @@ class KlineChart:
         """绘制K线"""
         if 'text' not in kline.columns:
             kline['text'] = ""
-        visible = True if kwargs.pop('visible', True) else 'legendonly'
-        candle = go.Candlestick(x=kline['dt'], open=kline["open"], high=kline["high"],
-                                low=kline["low"],
-                                close=kline["close"], text=kline["text"], name=name,
-                                visible=visible, showlegend=True,
-                                increasing_line_color=self.color_red,
-                                decreasing_line_color=self.color_green,
-                                increasing_fillcolor=self.color_red,
-                                decreasing_fillcolor=self.color_green, **kwargs)
+
+        candle = go.Candlestick(x=kline['dt'], open=kline["open"], high=kline["high"], low=kline["low"],
+                                close=kline["close"], text=kline["text"], name=name, showlegend=True,
+                                increasing_line_color=self.color_red, decreasing_line_color=self.color_green,
+                                increasing_fillcolor=self.color_red, decreasing_fillcolor=self.color_green, **kwargs)
         self.fig.add_trace(candle, row=1, col=1)
 
     def add_vol(self, kline: pd.DataFrame, row=2, **kwargs):
         """绘制成交量图"""
         df = kline.copy()
         df['vol_color'] = np.where(df['close'] > df['open'], self.color_red, self.color_green)
-        self.add_bar_indicator(df['dt'], df['vol'], color=df['vol_color'], name="成交量", row=row,
-                               show_legend=False)
+        self.add_bar_indicator(df['dt'], df['vol'], color=df['vol_color'], name="成交量", row=row, show_legend=False)
 
     def add_sma(self, kline: pd.DataFrame, row=1, ma_seq=(5, 10, 20), visible=False, **kwargs):
         """绘制均线图"""
@@ -93,8 +86,7 @@ class KlineChart:
         line_width = kwargs.get('line_width', 0.6)
         for ma in ma_seq:
             self.add_scatter_indicator(df['dt'], df['close'].rolling(ma).mean(), name=f"MA{ma}",
-                                       row=row, line_width=line_width, visible=visible,
-                                       show_legend=True)
+                                       row=row, line_width=line_width, visible=visible, show_legend=True)
 
     def add_macd(self, kline: pd.DataFrame, row=3, **kwargs):
         """绘制MACD图"""
@@ -103,29 +95,23 @@ class KlineChart:
         slowperiod = kwargs.get('slowperiod', 26)
         signalperiod = kwargs.get('signalperiod', 9)
         line_width = kwargs.get('line_width', 0.6)
-        diff, dea, macd = MACD(df["close"], fastperiod=fastperiod, slowperiod=slowperiod,
-                               signalperiod=signalperiod)
+        diff, dea, macd = MACD(df["close"], fastperiod=fastperiod, slowperiod=slowperiod, signalperiod=signalperiod)
         macd_colors = np.where(macd > 0, self.color_red, self.color_green)
         self.add_scatter_indicator(df['dt'], diff, name="DIFF", row=row,
                                    line_color='white', show_legend=False, line_width=line_width)
         self.add_scatter_indicator(df['dt'], dea, name="DEA", row=row,
                                    line_color='yellow', show_legend=False, line_width=line_width)
-        self.add_bar_indicator(df['dt'], macd, name="MACD", row=row, color=macd_colors,
-                               show_legend=False)
+        self.add_bar_indicator(df['dt'], macd, name="MACD", row=row, color=macd_colors, show_legend=False)
 
-    def add_indicator(self, dt, scatters: list = None, scatter_names: list = None, bar=None,
-                      bar_name='', row=4, **kwargs):
+    def add_indicator(self, dt, scatters: list = None, scatter_names: list = None, bar=None, bar_name='', row=4, **kwargs):
         """绘制曲线叠加bar型指标"""
         line_width = kwargs.get('line_width', 0.6)
         for i, scatter in enumerate(scatters):
-            self.add_scatter_indicator(dt, scatter, name=scatter_names[i], row=row,
-                                       show_legend=False, line_width=line_width)
+            self.add_scatter_indicator(dt, scatter, name=scatter_names[i], row=row, show_legend=False, line_width=line_width)
 
         if bar:
-            bar_colors = np.where(np.array(bar, dtype=np.double) > 0, self.color_red,
-                                  self.color_green)
-            self.add_bar_indicator(dt, bar, name=bar_name, row=row, color=bar_colors,
-                                   show_legend=False)
+            bar_colors = np.where(np.array(bar, dtype=np.double) > 0, self.color_red, self.color_green)
+            self.add_bar_indicator(dt, bar, name=bar_name, row=row, color=bar_colors, show_legend=False)
 
     def add_marker_indicator(self, x, y, name: str, row: int, text=None, **kwargs):
         """绘制标记类指标
@@ -145,10 +131,8 @@ class KlineChart:
         visible = True if kwargs.get('visible', True) else 'legendonly'
         color = kwargs.get('color', None)
         tag = kwargs.get('tag', None)
-        scatter = go.Scatter(x=x, y=y, name=name, text=text, line_width=line_width,
-                             line_color=line_color,
-                             hovertemplate=hover_template, showlegend=show_legend, visible=visible,
-                             opacity=0.6,
+        scatter = go.Scatter(x=x, y=y, name=name, text=text, line_width=line_width, line_color=line_color,
+                             hovertemplate=hover_template, showlegend=show_legend, visible=visible, opacity=1.0,
                              mode='markers', marker=dict(size=10, color=color, symbol=tag))
 
         self.fig.add_trace(scatter, row=row, col=1)
@@ -169,11 +153,10 @@ class KlineChart:
         mode = kwargs.pop('mode', 'text+lines')
         hover_template = kwargs.pop('hover_template', '%{y:.3f}')
         show_legend = kwargs.pop('show_legend', True)
-        opacity = kwargs.pop('opacity', 0.6)
+        opacity = kwargs.pop('opacity', 1.0)
         visible = True if kwargs.pop('visible', True) else 'legendonly'
 
-        scatter = go.Scatter(x=x, y=y, name=name, text=text, mode=mode,
-                             hovertemplate=hover_template,
+        scatter = go.Scatter(x=x, y=y, name=name, text=text, mode=mode, hovertemplate=hover_template,
                              showlegend=show_legend, visible=visible, opacity=opacity, **kwargs)
         self.fig.add_trace(scatter, row=row, col=1)
 
@@ -199,8 +182,7 @@ class KlineChart:
             color = self.color_red
 
         bar = go.Bar(x=x, y=y, marker_line_color=color, marker_color=color, name=name,
-                     showlegend=show_legend, hovertemplate=hover_template, visible=visible,
-                     base=base, **kwargs)
+                     showlegend=show_legend, hovertemplate=hover_template, visible=visible, base=base, **kwargs)
         self.fig.add_trace(bar, row=row, col=1)
 
     def open_in_browser(self, file_name: str = None, **kwargs):
