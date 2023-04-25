@@ -139,8 +139,7 @@ def check_bi(bars: List[NewBar], benchmark: float = None):
     bars_b = [x for x in bars if x.dt >= fx_b.elements[0].dt]
 
     # 判断fx_a和fx_b价格区间是否存在包含关系
-    ab_include = (fx_a.high > fx_b.high and fx_a.low < fx_b.low) \
-                 or (fx_a.high < fx_b.high and fx_a.low > fx_b.low)
+    ab_include = (fx_a.high > fx_b.high and fx_a.low < fx_b.low) or (fx_a.high < fx_b.high and fx_a.low > fx_b.low)
 
     # 判断当前笔的涨跌幅是否超过benchmark的一定比例
     if benchmark and abs(fx_a.fx - fx_b.fx) > benchmark * envs.get_bi_change_th():
@@ -153,8 +152,8 @@ def check_bi(bars: List[NewBar], benchmark: float = None):
         fxs_ = [x for x in fxs if fx_a.elements[0].dt <= x.dt <= fx_b.elements[2].dt]
         bi = BI(symbol=fx_a.symbol, fx_a=fx_a, fx_b=fx_b, fxs=fxs_, direction=direction, bars=bars_a)
 
-        low_ubi = min([x.low for x in bars_b])
-        high_ubi = max([x.high for x in bars_b])
+        low_ubi = min([x.low for y in bars_b for x in y.raw_bars])
+        high_ubi = max([x.high for y in bars_b for x in y.raw_bars])
         if (bi.direction == Direction.Up and high_ubi > bi.high) \
                 or (bi.direction == Direction.Down and low_ubi < bi.low):
             return None, bars
@@ -328,9 +327,9 @@ class CZSC:
         kline.add_macd(df, row=3)
 
         if len(bi_list) > 0:
-            bi = pd.DataFrame([{'dt': x.fx_a.dt, "bi": x.fx_a.fx, "text": x.fx_a.mark.value} for x in bi_list] +
-                              [{'dt': bi_list[-1].fx_b.dt, "bi": bi_list[-1].fx_b.fx,
-                                "text": bi_list[-1].fx_b.mark.value[0]}])
+            bi1 = [{'dt': x.fx_a.dt, "bi": x.fx_a.fx, "text": x.fx_a.mark.value} for x in bi_list]
+            bi2 = [{'dt': bi_list[-1].fx_b.dt, "bi": bi_list[-1].fx_b.fx, "text": bi_list[-1].fx_b.mark.value[0]}]
+            bi = pd.DataFrame(bi1 + bi2)
             fx = pd.DataFrame([{'dt': x.dt, "fx": x.fx} for x in self.fx_list])
             kline.add_scatter_indicator(fx['dt'], fx['fx'], name="分型", row=1, line_width=2)
             kline.add_scatter_indicator(bi['dt'], bi['bi'], name="笔", text=bi['text'], row=1, line_width=2)
@@ -380,6 +379,32 @@ class CZSC:
             return check_fxs(self.bars_ubi)
 
     @property
+    def ubi(self):
+        """Unfinished Bi，未完成的笔"""
+        if not self.bars_ubi or not self.bi_list:
+            return None
+
+        bars_raw = [y for x in self.bars_ubi for y in x.raw_bars]
+        # 获取最高点和最低点，以及对应的时间
+        high_bar = max(bars_raw, key=lambda x: x.high)
+        low_bar = min(bars_raw, key=lambda x: x.low)
+        direction = Direction.Up if self.bi_list[-1].direction == Direction.Down else Direction.Down
+
+        bi = {
+            "symbol": self.symbol,
+            "direction": direction,
+            "high": high_bar.high,
+            "low": low_bar.low,
+            "high_bar": high_bar,
+            "low_bar": low_bar,
+            "bars": self.bars_ubi,
+            "raw_bars": bars_raw,
+            "fxs": self.ubi_fxs,
+            "fx_a": self.ubi_fxs[0],
+        }
+        return bi
+
+    @property
     def fx_list(self) -> List[FX]:
         """分型列表，包括 bars_ubi 中的分型"""
         fxs = []
@@ -387,6 +412,6 @@ class CZSC:
             fxs.extend(bi_.fxs[1:])
         ubi = self.ubi_fxs
         for x in ubi:
-            if not fxs or x.dt > fxs[-1].dt:
+            if not fxs or x.dt > fxs[-1].raw_bars[0].dt:
                 fxs.append(x)
         return fxs

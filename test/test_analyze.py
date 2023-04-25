@@ -1,8 +1,9 @@
 # coding: utf-8
+import os
 import zipfile
 from tqdm import tqdm
 import pandas as pd
-from czsc.analyze import *
+from czsc.analyze import CZSC, RawBar, NewBar, remove_include, FX, check_fx, Direction, kline_pro
 from czsc.enum import Freq
 from collections import OrderedDict
 from czsc.signals.bxt import get_s_d0_bi, get_s_three_bi
@@ -90,6 +91,10 @@ def test_czsc_update():
     c = CZSC(bars)
     assert not c.signals
 
+    # 测试 ubi 属性
+    ubi = c.ubi
+    assert ubi['direction'] == Direction.Down
+    assert ubi['high_bar'].dt < ubi['low_bar'].dt
     # 测试自定义信号
     c = CZSC(bars, get_signals=get_user_signals)
     assert len(c.signals) == 7
