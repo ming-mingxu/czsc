@@ -13,7 +13,7 @@ import os
 import docx
 import pandas as pd
 from docx.oxml.ns import qn
-from docx.shared import Cm, Inches, Pt, RGBColor
+from docx.shared import Cm, Pt, RGBColor
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 
 
@@ -78,21 +78,22 @@ class WordWriter:
         text.element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
         text.font.size = Pt(12)
 
-    def add_df_table(self, df: pd.DataFrame, style='Table Grid'):
+    def add_df_table(self, df: pd.DataFrame, style='Table Grid', **kwargs):
         """添加数据表
 
         https://www.jianshu.com/p/93e0df92cf16
+
         :param df: 数据表
         :param style: 表格样式
         :return:
         """
         if df.empty:
-            print(f"add_df_table error: 传入的数据表是空的")
+            print("add_df_table error: 传入的数据表是空的")
             return
 
         table = self.document.add_table(rows=1, cols=df.shape[1], style=style)
         # 设置整个表格字体属性
-        table.style.font.size = Pt(12)
+        table.style.font.size = Pt(kwargs.get("font_size", 10))
         table.style.font.color.rgb = RGBColor(0, 0, 0)
         table.style.paragraph_format.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
 

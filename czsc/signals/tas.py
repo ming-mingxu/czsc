@@ -962,6 +962,82 @@ def tas_double_ma_V221203(c: CZSC, **kwargs) -> OrderedDict:
     return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1, v2=v2)
 
 
+def tas_double_ma_V230511(c: CZSC, **kwargs):
+    """双均线金叉死叉后的反向信号
+
+    参数模板："{freq}_D{di}#{ma_type}#{t1}#{t2}_BS辅助V230511"
+
+    **信号逻辑：**
+
+    1. t1周期均线上穿t2周期均线，且当前K线为大实体阴线，看多信号；
+    2. t1周期均线下穿t2周期均线，且当前K线为大实体阳线，看空信号；
+
+    **信号列表：**
+
+    - Signal('日线_D2#SMA#5#20_BS辅助V230511_看空_任意_任意_0')
+    - Signal('日线_D2#SMA#5#20_BS辅助V230511_看多_第一个_任意_0')
+    - Signal('日线_D2#SMA#5#20_BS辅助V230511_看多_任意_任意_0')
+    - Signal('日线_D2#SMA#5#20_BS辅助V230511_看空_第一个_任意_0')
+
+    :param c: 基础周期的 CZSC 对象
+    :param kwargs: 其他参数
+        - di: 倒数第 di 根 K 线
+        - t1: 均线1周期
+        - t2: 均线2周期
+        - ma_type: 均线类型，支持：MA, EMA, WMA, DEMA, TEMA, TRIMA, KAMA, MAMA, T3
+    :return: 信号字典
+    """
+    di = int(kwargs.get('di', 1))
+    t1 = int(kwargs.get('t1', 5))
+    t2 = int(kwargs.get('t2', 20))
+    assert t1 < t2, "t1 必须小于 t2，否则无法判断金叉死叉"
+    ma_type = kwargs.get('ma_type', 'SMA').upper()
+    cache_key1 = update_ma_cache(c, ma_type=ma_type, timeperiod=t1)
+    cache_key2 = update_ma_cache(c, ma_type=ma_type, timeperiod=t2)
+
+    freq = c.freq.value
+    k1, k2, k3 = f"{freq}_D{di}#{ma_type}#{t1}#{t2}_BS辅助V230511".split('_')
+    v1, v2 = '其他', '任意'
+    if len(c.bars_raw) < t2 + 10:
+        return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+
+    bars = get_sub_elements(c.bars_raw, di=di, n=t2+1)
+    mean_solid = np.mean([x.solid for x in bars])
+    bar = c.bars_raw[-di]
+    solid_th = max(bar.upper, bar.lower, mean_solid)
+
+    if bar.solid < solid_th:
+        return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+
+    if bar.cache[cache_key1] > bar.cache[cache_key2] and bar.close < bar.open:
+        v1 = '看多'
+
+        right_bars = []
+        for x in bars[::-1]:
+            if x.cache[cache_key1] > x.cache[cache_key2]:
+                right_bars.append({'bar': x, '大实体阴线': x.solid > solid_th and x.close < x.open})
+            else:
+                break
+
+        if len(right_bars) < t2 / 2 and sum([x['大实体阴线'] for x in right_bars]) == 1:
+            v2 = '第一个'
+
+    if bar.cache[cache_key1] < bar.cache[cache_key2] and bar.close > bar.open:
+        v1 = '看空'
+
+        right_bars = []
+        for x in bars[::-1]:
+            if x.cache[cache_key1] < x.cache[cache_key2]:
+                right_bars.append({'bar': x, '大实体阳线': x.solid > solid_th and x.close > x.open})
+            else:
+                break
+
+        if len(right_bars) < t2 / 2 and sum([x['大实体阳线'] for x in right_bars]) == 1:
+            v2 = '第一个'
+
+    return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1, v2=v2)
+
+
 # BOLL信号计算函数
 # ======================================================================================================================
 
@@ -1207,8 +1283,8 @@ def tas_kdj_evc_V221201(c: CZSC, **kwargs) -> OrderedDict:
     c1, c2 = count_range
     assert c2 > c1
 
-    k1, k2, k3 = f"{c.freq.value}_D{di}T{th}KDJ{fastk_period}#{slowk_period}#{slowd_period}#{key}值突破{c1}#{c2}_KDJ极值V221201".split(
-        '_')
+    k1, k2, k3 = f"{c.freq.value}_D{di}T{th}KDJ{fastk_period}#{slowk_period}" \
+                 f"#{slowd_period}#{key}值突破{c1}#{c2}_KDJ极值V221201".split('_')
     bars = get_sub_elements(c.bars_raw, di=di, n=3 + c2)
 
     v1 = "其他"
@@ -1523,8 +1599,8 @@ def tas_second_bs_V230303(c: CZSC, **kwargs):
     last_bar: RawBar = last_bi.raw_bars[-1]
 
     if last_bi.direction == Direction.Down and last_bar.low < last_bar.cache[key] and min(
-            [x.low for x in _bi_list[-5:]]) == min([x.low for x in _bi_list]) and first_bar.cache[key] < last_bar.cache[
-        key]:
+            [x.low for x in _bi_list[-5:]]) == min([x.low for x in _bi_list]) \
+            and first_bar.cache[key] < last_bar.cache[key]:
         v1 = "二买"
 
     if last_bi.direction == Direction.Up and last_bar.high > last_bar.cache[key] and max(
@@ -1932,5 +2008,181 @@ def tas_kdj_evc_V230401(c: CZSC, **kwargs) -> OrderedDict:
     if max_count > sc >= min_count:
         assert v1 == '其他'
         v1 = "空头"
+
+    return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+
+
+def update_atr_cache(c: CZSC, **kwargs):
+    """更新ATR缓存
+
+    平均真实波幅（ATR）的计算方法：
+
+    1、当前交易日的最高价与最低价间的波幅
+    2、前一交易日收盘价与当个交易日最高价间的波幅
+    3、前一交易日收盘价与当个交易日最低价间的波幅
+
+    今日振幅、今日最高与昨收差价，今日最低与昨收差价中的最大值，为真实波幅，在有了真实波幅后，就可以利用一段时间的平均值计算ATR了。
+
+    :param c: CZSC对象
+    :return:
+    """
+    timeperiod = int(kwargs.get('timeperiod', 14))
+    cache_key = f"ATR{timeperiod}"
+    if c.bars_raw[-1].cache and c.bars_raw[-1].cache.get(cache_key, None):
+        # 如果最后一根K线已经有对应的缓存，不执行更新
+        return cache_key
+
+    last_cache = dict(c.bars_raw[-2].cache) if c.bars_raw[-2].cache else dict()
+    if cache_key not in last_cache.keys() or len(c.bars_raw) < timeperiod + 15:
+        # 初始化缓存
+        bars = c.bars_raw
+    else:
+        # 增量更新最近5个K线缓存
+        bars = c.bars_raw[-timeperiod - 80:]
+
+    high = np.array([x.high for x in bars])
+    low = np.array([x.low for x in bars])
+    close = np.array([x.close for x in bars])
+    atr = ta.ATR(high, low, close, timeperiod=timeperiod)
+
+    for i in range(len(bars)):
+        _c = dict(bars[i].cache) if bars[i].cache else dict()
+        if cache_key not in _c.keys():
+            _c.update({cache_key: atr[i] if atr[i] else 0})
+            bars[i].cache = _c
+
+    return cache_key
+
+
+def tas_atr_break_V230424(c: CZSC, **kwargs):
+    """ATR突破
+
+    参数模板："{freq}_D{di}通道突破#{N}#{K1}#{K2}_BS辅助V230403"
+
+    **信号逻辑：**
+
+    1. 以ATR为基础的通道突破；
+    2. close 向上突破 LL + th * ATR, 看多；
+    3. close 向下突破 HH - th * ATR，看空
+
+    **信号列表：**
+
+    - Signal('日线_D1ATR5T30突破_BS辅助V230424_看空_任意_任意_0')
+    - Signal('日线_D1ATR5T30突破_BS辅助V230424_看多_任意_任意_0')
+
+    :param c: 基础周期的 CZSC 对象
+    :param kwargs: 其他参数
+        - di: 倒数第 di 根 K 线
+        - timeperiod: ATR的计算周期
+        - th: ATR突破的倍数，根据经验优化
+    :return: 信号字典
+    """
+    di = int(kwargs.get('di', 1))
+    th = int(kwargs.get('th', 30))
+    timeperiod = int(kwargs.get('timeperiod', 5))
+    cache_key = update_atr_cache(c, timeperiod=timeperiod)
+    freq = c.freq.value
+    k1, k2, k3 = f"{freq}_D{di}ATR{timeperiod}T{th}突破_BS辅助V230424".split('_')
+    if len(c.bars_raw) < 3:
+        return create_single_signal(k1=k1, k2=k2, k3=k3, v1='其他')
+
+    bars = get_sub_elements(c.bars_raw, di=di, n=timeperiod)
+    HH = max([i.high for i in bars])
+    LL = min([i.low for i in bars])
+    bar = c.bars_raw[-di]
+    atr = c.bars_raw[-di].cache[cache_key]
+
+    th = th / 10
+    if HH - th * atr > bar.close > LL + th * atr:
+        return create_single_signal(k1=k1, k2=k2, k3=k3, v1='其他')
+
+    if bar.close > LL + th * atr:
+        v1 = '看多'
+    elif bar.close < HH - th * atr:
+        v1 = '看空'
+    else:
+        v1 = '其他'
+
+    return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+
+
+def update_sar_cache(c: CZSC, **kwargs):
+    """更新SAR缓存
+
+    SAR是止损转向操作点指标的简称，英文名称为“Stop and Reverse"，缩写为SAR，一般称为抛物线指标。
+    该指标是由美国技术分析大师威尔斯·威尔德所创造出来的。
+
+    详细介绍：
+
+    - https://zhuanlan.zhihu.com/p/210169446
+    - https://www.investopedia.com/terms/p/parabolicindicator.asp
+
+    :param c: CZSC对象
+    :return:
+    """
+    cache_key = "SAR"
+    if c.bars_raw[-1].cache and c.bars_raw[-1].cache.get(cache_key, None):
+        # 如果最后一根K线已经有对应的缓存，不执行更新
+        return cache_key
+
+    last_cache = dict(c.bars_raw[-2].cache) if c.bars_raw[-2].cache else dict()
+    if cache_key not in last_cache.keys() or len(c.bars_raw) < 50:
+        # 初始化缓存
+        bars = c.bars_raw
+    else:
+        # 增量更新最近5个K线缓存
+        bars = c.bars_raw[-120:]
+
+    high = np.array([x.high for x in bars])
+    low = np.array([x.low for x in bars])
+    sar = ta.SAR(high, low)
+
+    for i in range(len(bars)):
+        _c = dict(bars[i].cache) if bars[i].cache else dict()
+        if cache_key not in _c.keys():
+            _c.update({cache_key: sar[i] if sar[i] else 0})
+            bars[i].cache = _c
+
+    return cache_key
+
+
+def tas_sar_base_V230425(c: CZSC, **kwargs):
+    """SAR基础信号
+
+    参数模板："{freq}_D{di}MO{max_overlap}SAR_BS辅助V230425"
+
+    **信号逻辑：**
+
+    1. 收盘价升破SAR，且前面MO根K中有任意一根K线的收盘价都低于SAR，看多信号
+    2. 收盘价跌破SAR，且前面MO根K中有任意一根K线的收盘价都高于SAR，看空信号
+
+    **信号列表：**
+
+    - Signal('日线_D1MO5SAR_BS辅助V230425_看空_任意_任意_0')
+    - Signal('日线_D1MO5SAR_BS辅助V230425_看多_任意_任意_0')
+
+    :param c: 基础周期的 CZSC 对象
+    :param kwargs: 其他参数
+        - di: 倒数第 di 根 K 线
+        - max_overlap: 信号最大重叠K线数
+    :return: 信号字典
+    """
+    di = int(kwargs.get('di', 1))
+    max_overlap = int(kwargs.get('max_overlap', 5))
+    cache_key = update_sar_cache(c)
+    freq = c.freq.value
+    k1, k2, k3 = f"{freq}_D{di}MO{max_overlap}SAR_BS辅助V230425".split('_')
+    if len(c.bars_raw) < 3:
+        return create_single_signal(k1=k1, k2=k2, k3=k3, v1='其他')
+
+    bars = get_sub_elements(c.bars_raw, di=di, n=max_overlap)
+    bar = c.bars_raw[-di]
+    sar = c.bars_raw[-di].cache[cache_key]
+    if bar.close > sar and any([x.close < x.cache[cache_key] for x in bars]):
+        v1 = '看多'
+    elif bar.close < sar and any([x.close > x.cache[cache_key] for x in bars]):
+        v1 = '看空'
+    else:
+        v1 = '其他'
 
     return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
