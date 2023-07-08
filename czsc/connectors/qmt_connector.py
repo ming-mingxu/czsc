@@ -92,7 +92,11 @@ def get_kline(symbol, period, start_time, end_time, count=-1, dividend_type='fro
         4  000001.SZ
     """
     start_time = pd.to_datetime(start_time).strftime('%Y%m%d%H%M%S')
-    end_time = pd.to_datetime(end_time).strftime('%Y%m%d%H%M%S')
+    if '1d' == period:
+        end_time = pd.to_datetime(end_time).replace(hour=15,minute=0).strftime('%Y%m%d%H%M%S')
+    else:
+        end_time = pd.to_datetime(end_time).strftime('%Y%m%d%H%M%S')
+    
     if kwargs.get("download_hist", True):
         xtdata.download_history_data(symbol, period=period, start_time=start_time, end_time=end_time)
 
@@ -143,6 +147,9 @@ def get_raw_bars(symbol, freq, sdt, edt, fq='前复权', **kwargs):
 
     kline = get_kline(symbol, period, sdt, edt, dividend_type=dividend_type,
                       download_hist=kwargs.get("download_hist", True), df=True)
+    if kline.empty:
+        return []
+
     kline['dt'] = pd.to_datetime(kline['time'])
     kline['vol'] = kline['volume']
     bars = resample_bars(kline, freq, raw_bars=True)

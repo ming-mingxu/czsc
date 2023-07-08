@@ -12,14 +12,16 @@ from loguru import logger
 try:
     import talib as ta
 except:
-    logger.warning(f"ta-lib 没有正确安装，相关信号函数无法正常执行。"
-                   f"请参考安装教程 https://blog.csdn.net/qaz2134560/article/details/98484091")
+    logger.warning(f"ta-lib 没有正确安装，相关信号函数无法正常执行。" f"请参考安装教程 https://blog.csdn.net/qaz2134560/article/details/98484091")
+import math
+import pandas as pd
 import numpy as np
+from collections import OrderedDict
 from deprecated import deprecated
 from czsc.analyze import CZSC
 from czsc.objects import Signal, Direction, BI, RawBar, FX
 from czsc.utils import get_sub_elements, fast_slow_cross, count_last_same, create_single_signal
-from collections import OrderedDict
+from czsc.utils.sig import cross_zero_axis, cal_cross_num, down_cross_count
 
 
 def update_ma_cache(c: CZSC, **kwargs):
@@ -32,10 +34,16 @@ def update_ma_cache(c: CZSC, **kwargs):
     :return: cache_key
     """
     ma_type_map = {
-        'SMA': ta.MA_Type.SMA, 'EMA': ta.MA_Type.EMA, 'WMA': ta.MA_Type.WMA, 'KAMA': ta.MA_Type.KAMA,
-        'TEMA': ta.MA_Type.TEMA, 'DEMA': ta.MA_Type.DEMA, 'MAMA': ta.MA_Type.MAMA, 'TRIMA': ta.MA_Type.TRIMA,
+        'SMA': ta.MA_Type.SMA,
+        'EMA': ta.MA_Type.EMA,
+        'WMA': ta.MA_Type.WMA,
+        'KAMA': ta.MA_Type.KAMA,
+        'TEMA': ta.MA_Type.TEMA,
+        'DEMA': ta.MA_Type.DEMA,
+        'MAMA': ta.MA_Type.MAMA,
+        'TRIMA': ta.MA_Type.TRIMA,
     }
-    timeperiod = int(kwargs.get("timeperiod"))
+    timeperiod = int(kwargs["timeperiod"])
     ma_type = kwargs.get("ma_type", 'SMA').upper()
     assert ma_type in ma_type_map.keys(), f"{ma_type} 不是支持的均线类型，可选值：{list(ma_type_map.keys())}"
 
@@ -57,7 +65,7 @@ def update_ma_cache(c: CZSC, **kwargs):
 
     else:
         # 增量更新最近5个K线缓存
-        close = np.array([x.close for x in c.bars_raw[-timeperiod - 10:]])
+        close = np.array([x.close for x in c.bars_raw[-timeperiod - 10 :]])
         ma = ta.MA(close, timeperiod=timeperiod, matype=ma_type_map[ma_type.upper()])
         for i in range(1, 6):
             _c = dict(c.bars_raw[-i].cache) if c.bars_raw[-i].cache else dict()
@@ -97,7 +105,7 @@ def update_macd_cache(c: CZSC, **kwargs):
 
     else:
         # 增量更新最近5个K线缓存
-        close = np.array([x.close for x in c.bars_raw[-min_count - 10:]])
+        close = np.array([x.close for x in c.bars_raw[-min_count - 10 :]])
         dif, dea, macd = ta.MACD(close, fastperiod=fastperiod, slowperiod=slowperiod, signalperiod=signalperiod)
         for i in range(1, 6):
             _c = dict(c.bars_raw[-i].cache) if c.bars_raw[-i].cache else dict()
@@ -138,7 +146,7 @@ def update_boll_cache_V230228(c: CZSC, **kwargs):
 
     else:
         # 增量更新最近5个K线缓存
-        close = np.array([x.close for x in c.bars_raw[-timeperiod - 10:]])
+        close = np.array([x.close for x in c.bars_raw[-timeperiod - 10 :]])
         u1, m, l1 = ta.BBANDS(close, timeperiod=timeperiod, nbdevup=nbdev, nbdevdn=nbdev, matype=0)
 
         for i in range(1, 6):
@@ -175,32 +183,41 @@ def update_boll_cache(c: CZSC, **kwargs):
             _c = dict(c.bars_raw[i].cache) if c.bars_raw[i].cache else dict()
             if not m[i]:
                 _data = {
-                    "上轨3": close[i], "上轨2": close[i], "上轨1": close[i], "中线": close[i], "下轨1": close[i],
-                    "下轨2": close[i], "下轨3": close[i]
+                    "上轨3": close[i],
+                    "上轨2": close[i],
+                    "上轨1": close[i],
+                    "中线": close[i],
+                    "下轨1": close[i],
+                    "下轨2": close[i],
+                    "下轨3": close[i],
                 }
             else:
-                _data = {
-                    "上轨3": u3[i], "上轨2": u2[i], "上轨1": u1[i], "中线": m[i], "下轨1": l1[i], "下轨2": l2[i],
-                    "下轨3": l3[i]
-                }
+                _data = {"上轨3": u3[i], "上轨2": u2[i], "上轨1": u1[i], "中线": m[i], "下轨1": l1[i], "下轨2": l2[i], "下轨3": l3[i]}
             _c.update({cache_key: _data})
             c.bars_raw[i].cache = _c
 
     else:
         # 增量更新最近5个K线缓存
-        close = np.array([x.close for x in c.bars_raw[-timeperiod - 10:]])
+        close = np.array([x.close for x in c.bars_raw[-timeperiod - 10 :]])
         u1, m, l1 = ta.BBANDS(close, timeperiod=timeperiod, nbdevup=dev_seq[0], nbdevdn=dev_seq[0], matype=0)
         u2, m, l2 = ta.BBANDS(close, timeperiod=timeperiod, nbdevup=dev_seq[1], nbdevdn=dev_seq[1], matype=0)
         u3, m, l3 = ta.BBANDS(close, timeperiod=timeperiod, nbdevup=dev_seq[2], nbdevdn=dev_seq[2], matype=0)
 
         for i in range(1, 6):
             _c = dict(c.bars_raw[-i].cache) if c.bars_raw[-i].cache else dict()
-            _c.update({
-                cache_key: {
-                    "上轨3": u3[-i], "上轨2": u2[-i], "上轨1": u1[-i], "中线": m[-i], "下轨1": l1[-i],
-                    "下轨2": l2[-i], "下轨3": l3[-i]
+            _c.update(
+                {
+                    cache_key: {
+                        "上轨3": u3[-i],
+                        "上轨2": u2[-i],
+                        "上轨1": u1[-i],
+                        "中线": m[-i],
+                        "下轨1": l1[-i],
+                        "下轨2": l2[-i],
+                        "下轨3": l3[-i],
+                    }
                 }
-            })
+            )
             c.bars_raw[-i].cache = _c
 
     return cache_key
@@ -282,7 +299,7 @@ def tas_macd_base_V221028(c: CZSC, **kwargs) -> OrderedDict:
 
     k1, k2, k3 = f"{c.freq.value}_D{di}MACD{fastperiod}#{slowperiod}#{signalperiod}#{key}_BS辅助V221028".split('_')
 
-    macd = [x.cache[cache_key][key.lower()] for x in c.bars_raw[-5 - di:]]
+    macd = [x.cache[cache_key][key.lower()] for x in c.bars_raw[-5 - di :]]
     v1 = "多头" if macd[-di] >= 0 else "空头"
     v2 = "向上" if macd[-di] >= macd[-di - 1] else "向下"
 
@@ -470,7 +487,7 @@ def tas_macd_first_bs_V221216(c: CZSC, **kwargs):
         dea = [x.cache[cache_key]['dea'] for x in bars]
         macd = [x.cache[cache_key]['macd'] for x in bars]
         n_bars = bars[-10:]
-        m_bars = bars[-100: -10]
+        m_bars = bars[-100:-10]
         high_n = max([x.high for x in n_bars])
         low_n = min([x.low for x in n_bars])
         high_m = max([x.high for x in m_bars])
@@ -702,8 +719,7 @@ def tas_macd_change_V221105(c: CZSC, **kwargs) -> OrderedDict:
     signalperiod = int(kwargs.get('signalperiod', 9))
 
     cache_key = update_macd_cache(c, **kwargs)
-    k1, k2, k3 = f"{c.freq.value}_D{di}K{n}#MACD{fastperiod}#{slowperiod}#{signalperiod}变色次数_BS辅助V221105".split(
-        '_')
+    k1, k2, k3 = f"{c.freq.value}_D{di}K{n}#MACD{fastperiod}#{slowperiod}#{signalperiod}变色次数_BS辅助V221105".split('_')
 
     bars = get_sub_elements(c.bars_raw, di=di, n=n)
     dif = [x.cache[cache_key]['dif'] for x in bars]
@@ -741,6 +757,7 @@ def tas_macd_change_V221105(c: CZSC, **kwargs) -> OrderedDict:
 
 # MA信号计算函数
 # ======================================================================================================================
+
 
 def tas_ma_base_V221101(c: CZSC, **kwargs) -> OrderedDict:
     """MA 多空和方向信号
@@ -1001,7 +1018,7 @@ def tas_double_ma_V230511(c: CZSC, **kwargs):
     if len(c.bars_raw) < t2 + 10:
         return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
 
-    bars = get_sub_elements(c.bars_raw, di=di, n=t2+1)
+    bars = get_sub_elements(c.bars_raw, di=di, n=t2 + 1)
     mean_solid = np.mean([x.solid for x in bars])
     bar = c.bars_raw[-di]
     solid_th = max(bar.upper, bar.lower, mean_solid)
@@ -1176,8 +1193,9 @@ def update_kdj_cache(c: CZSC, **kwargs):
         low = np.array([x.low for x in bars])
         close = np.array([x.close for x in bars])
 
-        k, d = ta.STOCH(high, low, close, fastk_period=fastk_period, slowk_period=slowk_period,
-                        slowd_period=slowd_period)
+        k, d = ta.STOCH(
+            high, low, close, fastk_period=fastk_period, slowk_period=slowk_period, slowd_period=slowd_period
+        )
         j = list(map(lambda x, y: 3 * x - 2 * y, k, d))
 
         for i in range(len(close)):
@@ -1186,12 +1204,13 @@ def update_kdj_cache(c: CZSC, **kwargs):
             c.bars_raw[i].cache = _c
 
     else:
-        bars = c.bars_raw[-min_count - 10:]
+        bars = c.bars_raw[-min_count - 10 :]
         high = np.array([x.high for x in bars])
         low = np.array([x.low for x in bars])
         close = np.array([x.close for x in bars])
-        k, d = ta.STOCH(high, low, close, fastk_period=fastk_period, slowk_period=slowk_period,
-                        slowd_period=slowd_period)
+        k, d = ta.STOCH(
+            high, low, close, fastk_period=fastk_period, slowk_period=slowk_period, slowd_period=slowd_period
+        )
         j = list(map(lambda x, y: 3 * x - 2 * y, k, d))
 
         for i in range(1, 6):
@@ -1283,8 +1302,10 @@ def tas_kdj_evc_V221201(c: CZSC, **kwargs) -> OrderedDict:
     c1, c2 = count_range
     assert c2 > c1
 
-    k1, k2, k3 = f"{c.freq.value}_D{di}T{th}KDJ{fastk_period}#{slowk_period}" \
-                 f"#{slowd_period}#{key}值突破{c1}#{c2}_KDJ极值V221201".split('_')
+    k1, k2, k3 = (
+        f"{c.freq.value}_D{di}T{th}KDJ{fastk_period}#{slowk_period}"
+        f"#{slowd_period}#{key}值突破{c1}#{c2}_KDJ极值V221201".split('_')
+    )
     bars = get_sub_elements(c.bars_raw, di=di, n=3 + c2)
 
     v1 = "其他"
@@ -1344,7 +1365,7 @@ def update_rsi_cache(c: CZSC, **kwargs):
 
     else:
         # 增量更新最近5个K线缓存
-        close = np.array([x.close for x in c.bars_raw[-timeperiod - 10:]])
+        close = np.array([x.close for x in c.bars_raw[-timeperiod - 10 :]])
         rsi = ta.RSI(close, timeperiod=timeperiod)
 
         for i in range(1, 6):
@@ -1405,40 +1426,6 @@ def tas_rsi_base_V230227(c: CZSC, **kwargs) -> OrderedDict:
     v2 = "向上" if rsi1 >= rsi2 else "向下"
 
     return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1, v2=v2)
-
-
-# def tas_double_rsi_V221203(c: CZSC, **kwargs) -> OrderedDict:
-#     """两个周期的RSI多空信号
-#
-#     参数模板："{freq}_D{di}K#RSI{rsi_seq[0]}#{rsi_seq[1]}_RSI多空V221203"
-#
-#     **信号逻辑：**
-#
-#     1. rsi1 > rsi2，多头；反之，空头
-#
-#     **信号列表：**
-#
-#     - Signal('15分钟_D1K#RSI5#10_RSI多空V221203_空头_任意_任意_0')
-#     - Signal('15分钟_D1K#RSI5#10_RSI多空V221203_多头_任意_任意_0')
-#
-#     :param c: CZSC对象
-#     :param di: 信号计算截止倒数第i根K线
-#     :param di: 信号计算截止倒数第i根K线
-#     :param rsi_seq: 指定短期RSI, 长期RSI 参数
-#     :return: 信号识别结果
-#     """
-#     di = int(kwargs.get('di', 1))
-#     rsi_seq = kwargs.get('rsi_seq', (5, 10))
-#     assert len(rsi_seq) == 2 and rsi_seq[1] > rsi_seq[0]
-#     rsi1 = update_rsi_cache(c, timeperiod=rsi_seq[0])
-#     rsi2 = update_rsi_cache(c, timeperiod=rsi_seq[1])
-#
-#     k1, k2, k3 = f"{c.freq.value}_D{di}K#RSI{rsi_seq[0]}#{rsi_seq[1]}_RSI多空V221203".split('_')
-#     bars = get_sub_elements(c.bars_raw, di=di, n=3)
-#     rsi1v = bars[-1].cache[rsi1]
-#     rsi2v = bars[-1].cache[rsi2]
-#     v1 = "多头" if rsi1v >= rsi2v else "空头"
-#     return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
 
 
 def tas_first_bs_V230217(c: CZSC, **kwargs) -> OrderedDict:
@@ -1598,15 +1585,20 @@ def tas_second_bs_V230303(c: CZSC, **kwargs):
     first_bar: RawBar = last_bi.raw_bars[0]
     last_bar: RawBar = last_bi.raw_bars[-1]
 
-    if last_bi.direction == Direction.Down and last_bar.low < last_bar.cache[key] and min(
-            [x.low for x in _bi_list[-5:]]) == min([x.low for x in _bi_list]) \
-            and first_bar.cache[key] < last_bar.cache[key]:
+    if (
+        last_bi.direction == Direction.Down
+        and last_bar.low < last_bar.cache[key]
+        and min([x.low for x in _bi_list[-5:]]) == min([x.low for x in _bi_list])
+        and first_bar.cache[key] < last_bar.cache[key]
+    ):
         v1 = "二买"
 
-    if last_bi.direction == Direction.Up and last_bar.high > last_bar.cache[key] and max(
-            [x.high for x in _bi_list[-5:]]) == max([x.high for x in _bi_list]) and first_bar.cache[key] > \
-            last_bar.cache[
-                key]:
+    if (
+        last_bi.direction == Direction.Up
+        and last_bar.high > last_bar.cache[key]
+        and max([x.high for x in _bi_list[-5:]]) == max([x.high for x in _bi_list])
+        and first_bar.cache[key] > last_bar.cache[key]
+    ):
         v1 = "二卖"
 
     return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
@@ -1730,13 +1722,21 @@ def tas_macd_bs1_V230312(c: CZSC, **kwargs):
 
     last_fx: FX = bis[-1].fx_b
     bi_low = max([x.low for x in bis[:-1] if x.direction == Direction.Up])
-    if bis[-1].direction == Direction.Down and bis[-1].low == min([x.low for x in bis]) and bis[-1].high < bi_low and \
-            last_fx.raw_bars[-1].cache[cache_key]['macd'] > last_fx.raw_bars[0].cache[cache_key]['macd']:
+    if (
+        bis[-1].direction == Direction.Down
+        and bis[-1].low == min([x.low for x in bis])
+        and bis[-1].high < bi_low
+        and last_fx.raw_bars[-1].cache[cache_key]['macd'] > last_fx.raw_bars[0].cache[cache_key]['macd']
+    ):
         v1 = "看多"
 
     bi_high = min([x.high for x in bis[:-1] if x.direction == Direction.Down])
-    if bis[-1].direction == Direction.Up and bis[-1].high == max([x.high for x in bis]) and bis[-1].low > bi_high and \
-            last_fx.raw_bars[-1].cache[cache_key]['macd'] < last_fx.raw_bars[0].cache[cache_key]['macd']:
+    if (
+        bis[-1].direction == Direction.Up
+        and bis[-1].high == max([x.high for x in bis])
+        and bis[-1].low > bi_high
+        and last_fx.raw_bars[-1].cache[cache_key]['macd'] < last_fx.raw_bars[0].cache[cache_key]['macd']
+    ):
         v1 = "看空"
 
     return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
@@ -1783,7 +1783,7 @@ def tas_macd_bs1_V230313(c: CZSC, **kwargs):
         macd.append(x.cache[cache_key]['macd'])
 
     n_bars = bars[-10:]
-    m_bars = bars[-100: -10]
+    m_bars = bars[-100:-10]
     high_n = max([x.high for x in n_bars])
     low_n = min([x.low for x in n_bars])
     high_m = max([x.high for x in m_bars])
@@ -1793,15 +1793,35 @@ def tas_macd_bs1_V230313(c: CZSC, **kwargs):
     up = [x for x in cross if x['类型'] == "金叉"]
     dn = [x for x in cross if x['类型'] == "死叉"]
 
-    b1_con1a = len(cross) > 3 and cross[-1]['类型'] == '死叉' and cross[-1]['面积'] < cross[-2]['面积'] or cross[-1]['面积'] < cross[-3]['面积']
-    b1_con1b = len(cross) > 3 and cross[-1]['类型'] == '金叉' and cross[-1]['面积'] > cross[-2]['面积'] or cross[-1]['面积'] < cross[-3]['面积']
-    b1_con2 = len(dn) > 3 and dn[-2]['面积'] < dn[-3]['面积']   # 三次死叉面积逐渐减小
-    b1_con3 = len(macd) > 10 and macd[-1] > macd[-2]          # MACD向上
+    b1_con1a = (
+        len(cross) > 3
+        and cross[-1]['类型'] == '死叉'
+        and cross[-1]['面积'] < cross[-2]['面积']
+        or cross[-1]['面积'] < cross[-3]['面积']
+    )
+    b1_con1b = (
+        len(cross) > 3
+        and cross[-1]['类型'] == '金叉'
+        and cross[-1]['面积'] > cross[-2]['面积']
+        or cross[-1]['面积'] < cross[-3]['面积']
+    )
+    b1_con2 = len(dn) > 3 and dn[-2]['面积'] < dn[-3]['面积']  # 三次死叉面积逐渐减小
+    b1_con3 = len(macd) > 10 and macd[-1] > macd[-2]  # MACD向上
     if low_n < low_m and (b1_con1a or b1_con1b) and b1_con2 and b1_con3:
         v1 = "一买"
 
-    s1_con1a = len(cross) > 3 and cross[-1]['类型'] == '金叉' and cross[-1]['面积'] > cross[-2]['面积'] or cross[-1]['面积'] > cross[-3]['面积']
-    s1_con1b = len(cross) > 3 and cross[-1]['类型'] == '死叉' and cross[-1]['面积'] < cross[-2]['面积'] or cross[-1]['面积'] < cross[-3]['面积']
+    s1_con1a = (
+        len(cross) > 3
+        and cross[-1]['类型'] == '金叉'
+        and cross[-1]['面积'] > cross[-2]['面积']
+        or cross[-1]['面积'] > cross[-3]['面积']
+    )
+    s1_con1b = (
+        len(cross) > 3
+        and cross[-1]['类型'] == '死叉'
+        and cross[-1]['面积'] < cross[-2]['面积']
+        or cross[-1]['面积'] < cross[-3]['面积']
+    )
     s1_con2 = len(up) > 3 and up[-2]['面积'] > up[-3]['面积']
     s1_con3 = len(macd) > 10 and macd[-1] < macd[-2]
     if high_n > high_m and (s1_con1a or s1_con1b) and s1_con2 and s1_con3:
@@ -1887,7 +1907,7 @@ def update_cci_cache(c: CZSC, **kwargs):
         bars = c.bars_raw
     else:
         # 增量更新最近5个K线缓存
-        bars = c.bars_raw[-timeperiod - 10:]
+        bars = c.bars_raw[-timeperiod - 10 :]
 
     high = np.array([x.high for x in bars])
     low = np.array([x.low for x in bars])
@@ -1989,8 +2009,7 @@ def tas_kdj_evc_V230401(c: CZSC, **kwargs) -> OrderedDict:
     assert 0 < th < 100, "th 必须在 0 到 100 之间"
     cache_key = update_kdj_cache(c, **kwargs)
 
-    k1, k2, k3 = f"{freq}_D{di}T{th}{cache_key}#{key}值突破{min_count}#{max_count}_BS辅助V230401".split(
-        '_')
+    k1, k2, k3 = f"{freq}_D{di}T{th}{cache_key}#{key}值突破{min_count}#{max_count}_BS辅助V230401".split('_')
     v1 = "其他"
     if len(c.bars_raw) < di + max_count + 2:
         return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
@@ -2038,7 +2057,7 @@ def update_atr_cache(c: CZSC, **kwargs):
         bars = c.bars_raw
     else:
         # 增量更新最近5个K线缓存
-        bars = c.bars_raw[-timeperiod - 80:]
+        bars = c.bars_raw[-timeperiod - 80 :]
 
     high = np.array([x.high for x in bars])
     low = np.array([x.low for x in bars])
@@ -2057,7 +2076,7 @@ def update_atr_cache(c: CZSC, **kwargs):
 def tas_atr_break_V230424(c: CZSC, **kwargs):
     """ATR突破
 
-    参数模板："{freq}_D{di}通道突破#{N}#{K1}#{K2}_BS辅助V230403"
+    参数模板："{freq}_D{di}ATR{timeperiod}T{th}突破_BS辅助V230424"
 
     **信号逻辑：**
 
@@ -2224,5 +2243,642 @@ def tas_ma_system_V230513(c: CZSC, **kwargs) -> OrderedDict:
         v1 = '多头排列'
     if all([x < y for x, y in zip(ma_val[:-1], ma_val[1:])]):
         v1 = '空头排列'
+
+    return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+
+
+def tas_macd_bs1_V230411(c: CZSC, **kwargs) -> OrderedDict:
+    """基于MACD DIF的笔背驰判断信号
+
+    参数模板："{freq}_D{di}T{tha}#{thb}#{thc}_BS1辅助V230411"
+
+    **信号逻辑：**
+
+    tha, thb, thc 分别为阈值，取值范围为 0 ~ 10000
+
+    取5笔，从远到近分别记为 1、2、3、4、5，如果满足以下条件，则判断为顶背驰，反之为底背弛：
+
+    1. 5向上，1~3的累计涨幅超过阈值tha，且3顶部的dif值大于1顶部dif值；
+    2. 5的顶部相比于3的顶部的涨幅超过阈值-thb，且相应dif值的变化率小于阈值-thc；
+
+    **信号列表：**
+
+    - Signal('15分钟_D1T100#10#30_BS1辅助V230411_底背驰_任意_任意_0')
+    - Signal('15分钟_D1T100#10#30_BS1辅助V230411_顶背驰_任意_任意_0')
+
+    :param c: CZSC对象
+    :param kwargs: 参数字典
+
+        - di: 信号计算截止倒数第i根K线
+        - tha: 前三笔的累计涨跌超过阈值tha，单位：BP，表示万分之一
+        - thb: 第3笔相比第1笔的顶的涨跌幅阈值thb，单位：BP，表示万分之一
+        - thc: 第5笔相比第3笔的DIF值的变化率阈值thc，单位：BP，表示万分之一
+
+    :return: 返回信号结果
+    """
+    di = int(kwargs.get("di", 1))
+    tha = int(kwargs.get("tha", 30))
+    thb = int(kwargs.get("thb", 5))
+    thc = int(kwargs.get("thc", 30))
+    freq = c.freq.value
+    assert 0 < tha < 10000, "tha 必须在 0 到 10000 之间"
+    assert 0 < thb < 10000, "thb 必须在 0 到 10000 之间"
+    assert 0 < thc < 10000, "thc 必须在 0 到 10000 之间"
+
+    cache_key = update_macd_cache(c, fastperiod=12, slowperiod=26, signalperiod=9)
+    k1, k2, k3 = f"{freq}_D{di}T{tha}#{thb}#{thc}_BS1辅助V230411".split('_')
+    v1 = "其他"
+    if len(c.bi_list) <= di + 7 or len(c.bars_ubi) > 9:
+        # 笔数不够，或者当下未完成笔已经延伸超过9根K线，不计算
+        return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+
+    bi1, bi2, bi3, bi4, bi5 = get_sub_elements(c.bi_list, di=di, n=5)
+    # 第一个bar要有macd结果
+    if np.isnan(bi1.raw_bars[0].cache[cache_key]['dif']):
+        return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+
+    if bi5.direction == Direction.Up:
+        bi1_dif = max([x.cache[cache_key]['dif'] for x in bi1.fx_b.raw_bars])
+        bi3_dif = max([x.cache[cache_key]['dif'] for x in bi3.fx_b.raw_bars])
+        bi5_dif = max([x.cache[cache_key]['dif'] for x in bi5.fx_b.raw_bars])
+
+        # 前三笔累计涨幅超过阈值tha
+        cond1 = ((bi3.high - bi1.low) / bi1.low) * 10000 > tha
+
+        # 第二个向上笔的顶所对应的DIF值，要高于第一个向上笔的顶所对应的DIF值
+        cond2 = bi3_dif > bi1_dif
+
+        # 第三个向上笔的顶相比第二个向上笔的顶的涨幅超过阈值thb
+        cond3 = ((bi5.high - bi3.high) / bi3.high) * 10000 > -thb
+
+        # 第三个向上笔的顶相比第二个向上笔的顶的DIF值的变化率小于阈值thc
+        cond4 = ((bi5_dif - bi3_dif) / bi3_dif) * 10000 < -thc
+
+        if cond1 and cond2 and cond3 and cond4:
+            v1 = "顶背驰"
+
+    elif bi5.direction == Direction.Down:
+        bi1_dif = min([x.cache[cache_key]['dif'] for x in bi1.fx_b.raw_bars])
+        bi3_dif = min([x.cache[cache_key]['dif'] for x in bi3.fx_b.raw_bars])
+        bi5_dif = min([x.cache[cache_key]['dif'] for x in bi5.fx_b.raw_bars])
+
+        # 前三笔累计跌幅超过阈值tha
+        cond1 = ((bi3.low - bi1.high) / bi1.high) * 10000 < -tha
+
+        # 第二个向下笔的底所对应的DIF值，要小于第一个向下笔的底所对应的DIF值
+        cond2 = bi3_dif < bi1_dif
+
+        # 第三个向下笔的底相比第二个向下笔的底的跌幅小于thb
+        cond3 = ((bi5.low - bi3.low) / bi3.low) * 10000 < thb
+
+        # 第三个向下笔的底相比第二个向下笔的底的DIF值的变化率大于thc
+        cond4 = ((bi5_dif - bi3_dif) / bi3_dif) * 10000 > thc
+
+        if cond1 and cond2 and cond3 and cond4:
+            v1 = "底背驰"
+
+    return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+
+
+def tas_macd_bs1_V230412(c: CZSC, **kwargs) -> OrderedDict:
+    """基于MACD DIF的笔背驰判断信号
+
+    参数模板："{freq}_D{di}T{tha}#{thb}_BS1辅助V230412"
+
+    **信号逻辑：**
+
+    取5笔，从远到近分别记为 1、2、3、4、5，如果满足以下条件，则判断为顶背驰，反之为底背弛：
+
+    1. 5向上，1~3的累计涨幅超过阈值tha，且3顶部的dif值大于1顶部dif值；
+    2. 5的顶部相比于3的顶部的涨幅超过阈值thb，且5顶部的dif值小于3顶部dif值；
+
+    **信号列表：**
+
+    - Signal('15分钟_D1T100#10_BS1辅助V230412_底背驰_任意_任意_0')
+    - Signal('15分钟_D1T100#10_BS1辅助V230412_顶背驰_任意_任意_0')
+
+    :param c: CZSC对象
+    :param kwargs: 参数字典
+
+        - di: 信号计算截止倒数第i根K线
+        - tha: 前三笔的累计涨跌超过阈值tha
+        - thb: 第三笔相比第二个向上笔的顶的涨幅超过阈值thb
+
+    :return:
+    """
+    di = int(kwargs.get("di", 1))
+    tha = int(kwargs.get("tha", 100))
+    thb = int(kwargs.get("thb", 10))
+    freq = c.freq.value
+
+    cache_key = update_macd_cache(c, fastperiod=12, slowperiod=26, signalperiod=9)
+    k1, k2, k3 = f"{freq}_D{di}T{tha}#{thb}_BS1辅助V230412".split('_')
+    v1 = "其他"
+    if len(c.bi_list) <= di + 7 or len(c.bars_ubi) > 9:
+        # 笔数不够，或者当下未完成笔已经延伸超过9根K线，不计算
+        return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+
+    bi1, bi2, bi3, bi4, bi5 = get_sub_elements(c.bi_list, di=di, n=5)
+    # 第一个bar要有macd结果
+    if np.isnan(bi1.raw_bars[0].cache[cache_key]['dif']):
+        return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+
+    if bi5.direction == Direction.Up:
+        bi1_dif = max([x.cache[cache_key]['dif'] for x in bi1.fx_b.raw_bars])
+        bi3_dif = max([x.cache[cache_key]['dif'] for x in bi3.fx_b.raw_bars])
+        bi5_dif = max([x.cache[cache_key]['dif'] for x in bi5.fx_b.raw_bars])
+
+        # 前三笔累计涨幅超过阈值tha
+        cond1 = ((bi3.high - bi1.low) / bi1.low) * 10000 > tha
+
+        # 5、3、1笔的dif值，3的最大
+        cond2 = bi5_dif < bi3_dif > bi1_dif
+
+        # 第三个向上笔的顶相比第二个向上笔的顶的涨幅超过阈值thb
+        cond3 = ((bi5.high - bi3.high) / bi3.high) * 10000 > -thb
+
+        if cond1 and cond2 and cond3:
+            v1 = "顶背驰"
+
+    elif bi5.direction == Direction.Down:
+        bi1_dif = min([x.cache[cache_key]['dif'] for x in bi1.fx_b.raw_bars])
+        bi3_dif = min([x.cache[cache_key]['dif'] for x in bi3.fx_b.raw_bars])
+        bi5_dif = min([x.cache[cache_key]['dif'] for x in bi5.fx_b.raw_bars])
+
+        # 前三笔累计跌幅超过阈值tha
+        cond1 = ((bi3.low - bi1.high) / bi1.high) * 10000 < -tha
+
+        # 5、3、1笔的dif值，3的最小
+        cond2 = bi5_dif > bi3_dif < bi1_dif
+
+        # 第三个向下笔的底相比第二个向下笔的底的跌幅超过阈值-thb
+        cond3 = ((bi5.low - bi3.low) / bi3.low) * 10000 < thb
+
+        if cond1 and cond2 and cond3:
+            v1 = "底背驰"
+
+    return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+
+
+def tas_accelerate_V230531(c: CZSC, **kwargs) -> OrderedDict:
+    """BOLL辅助判断加速行情
+
+    参数模板："{freq}_D{di}N{n}_BOLL加速V230531"
+
+     **信号逻辑：**
+
+    最近N根K线全部在中轨上方，上轨累计涨幅大于中轨2倍以上，多头加速，反之空头加速。
+
+     **信号列表：**
+
+    - Signal('60分钟_D1N20T20_BOLL加速V230531_空头加速_未破下轨_任意_0')
+    - Signal('60分钟_D1N20T20_BOLL加速V230531_空头加速_跌破下轨_任意_0')
+    - Signal('60分钟_D1N20T20_BOLL加速V230531_多头加速_升破上轨_任意_0')
+    - Signal('60分钟_D1N20T20_BOLL加速V230531_多头加速_未破上轨_任意_0')
+
+    :param c: CZSC对象
+    :param kwargs: 参数字典
+
+        - di: 倒数第几根K线
+        - n: 取截止dik的前n根K线
+        - t: 阈值，上下轨变化率超过中轨变化率的 t / 10 倍，默认20，即上下轨变化率超过中轨变化率的2倍
+
+    :return: 返回信号结果
+    """
+    di = int(kwargs.get('di', 1))
+    n = int(kwargs.get('n', 20))
+    t = int(kwargs.get('t', 20))
+    freq = c.freq.value
+    k1, k2, k3 = f"{freq}_D{di}N{n}T{t}_BOLL加速V230531".split('_')
+    v1, v2 = '其他', '其他'
+    cache_key = update_boll_cache_V230228(c, timeperiod=20, nbdev=20)
+
+    if len(c.bars_raw) < 40:
+        return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+
+    bars = get_sub_elements(c.bars_raw, di=di, n=n)
+    mid_zdf = bars[-1].cache[cache_key]['中线'] / bars[0].cache[cache_key]['中线'] - 1
+    up_zdf = bars[-1].cache[cache_key]['上轨'] / bars[0].cache[cache_key]['上轨'] - 1
+    down_zdf = bars[-1].cache[cache_key]['下轨'] / bars[0].cache[cache_key]['下轨'] - 1
+    last_bar = bars[-1]
+
+    if all([x.close > x.cache[cache_key]['中线'] for x in bars]) and up_zdf > t / 10 * mid_zdf > 0:
+        v1 = '多头加速'
+        v2 = '升破上轨' if last_bar.cache[cache_key]['上轨'] < last_bar.high else '未破上轨'
+
+    if all([x.close < x.cache[cache_key]['中线'] for x in bars]) and down_zdf < t / 10 * mid_zdf < 0:
+        v1 = '空头加速'
+        v2 = '跌破下轨' if last_bar.cache[cache_key]['下轨'] > last_bar.low else '未破下轨'
+
+    return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1, v2=v2)
+
+
+def tas_ma_cohere_V230512(c: CZSC, **kwargs) -> OrderedDict:
+    """均线系统粘合/扩散状态
+
+    参数模板："{freq}_D{di}SMA{ma_seq}_均线系统V230512"
+
+     **信号逻辑：**
+
+    1. 计算最近100根K线中，均线系统最大值与最小值的差异；取前80根K线，计算其标准差；
+    1. 粘合：最近20根K线中，均线系统最大值与最小值的差异小于0.5倍标准差的数量超过16根
+    2. 扩散：最近20根K线中，均线系统最大值与最小值的差异大于1.0倍标准差的数量超过16根
+
+     **信号列表：**
+
+    - Signal('60分钟_D1SMA5#13#21#34#55_均线系统V230512_扩散_任意_任意_0')
+    - Signal('60分钟_D1SMA5#13#21#34#55_均线系统V230512_粘合_任意_任意_0')
+
+    :param c: CZSC对象
+    :param kwargs: 参数字典
+     :return: 返回信号结果
+    """
+    di = int(kwargs.get('di', 1))
+    ma_seq = kwargs.get('ma_seq', "5#13#21#34#55")  # 均线系统参数，以#分隔
+    freq = c.freq.value
+    k1, k2, k3 = f"{freq}_D{di}SMA{ma_seq}_均线系统V230512".split('_')
+    v1 = '其他'
+    ma_seq = [int(x) for x in ma_seq.split('#')]
+    for ma in ma_seq:
+        update_ma_cache(c, ma_type="SMA", timeperiod=ma)
+
+    if len(c.bars_raw) < max(ma_seq) + di + 10:
+        return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+
+    ret_seq = []
+    for bar in get_sub_elements(c.bars_raw, di=di, n=100):
+        ma_val = [bar.cache[f'SMA#{x}'] for x in ma_seq]
+        ret_seq.append(max(ma_val) / min(ma_val) - 1)
+
+    ret_std = np.std(ret_seq[:-20])
+    if sum([1 if ret < 0.5 * ret_std else 0 for ret in ret_seq[-20:]]) >= 16:
+        v1 = "粘合"
+
+    if sum([1 if ret > 1.0 * ret_std else 0 for ret in ret_seq[-20:]]) >= 16:
+        v1 = "扩散"
+
+    return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+
+
+def tas_cross_status_V230619(c: CZSC, **kwargs) -> OrderedDict:
+    """0轴上下金死叉次数计算信号函数 贡献者：谌意勇
+
+    参数模板："{freq}_D{di}MACD{fastperiod}#{slowperiod}#{signalperiod}_金死叉V230619"
+
+    **信号逻辑：**
+
+    精确确立MACD指标中0轴以上或以下位置第几次金叉和死叉，作为开仓的辅助买点：
+
+    **信号列表：**
+
+    - Signal('日线_D1MACD12#26#9_金死叉V230619_0轴上死叉第2次_任意_任意_0')
+    - Signal('日线_D1MACD12#26#9_金死叉V230619_0轴下金叉第1次_任意_任意_0')
+    - Signal('日线_D1MACD12#26#9_金死叉V230619_0轴下死叉第1次_任意_任意_0')
+    - Signal('日线_D1MACD12#26#9_金死叉V230619_0轴下金叉第2次_任意_任意_0')
+    - Signal('日线_D1MACD12#26#9_金死叉V230619_0轴下死叉第2次_任意_任意_0')
+    - Signal('日线_D1MACD12#26#9_金死叉V230619_0轴下金叉第3次_任意_任意_0')
+    - Signal('日线_D1MACD12#26#9_金死叉V230619_0轴上死叉第1次_任意_任意_0')
+    - Signal('日线_D1MACD12#26#9_金死叉V230619_0轴上金叉第1次_任意_任意_0')
+    - Signal('日线_D1MACD12#26#9_金死叉V230619_0轴下死叉第3次_任意_任意_0')
+    - Signal('日线_D1MACD12#26#9_金死叉V230619_0轴下金叉第4次_任意_任意_0')
+
+    :param c: CZSC对象
+    :param kwargs: 参数字典
+
+        - :param di: 信号计算截止倒数第i根K线
+        - :param fastperiod: MACD快线周期
+        - :param slowperiod: MACD慢线周期
+        - :param signalperiod: MACD信号线周期
+
+    :return: 信号识别结果
+    """
+    di = int(kwargs.get('di', 1))
+    freq = c.freq.value
+    fastperiod = int(kwargs.get('fastperiod', 12))
+    slowperiod = int(kwargs.get('slowperiod', 26))
+    signalperiod = int(kwargs.get('signalperiod', 9))
+    cache_key = update_macd_cache(c, **kwargs)
+    s = OrderedDict()
+    bars = get_sub_elements(c.bars_raw, di=di, n=100)
+    k1, k2, k3 = f"{freq}_D{di}MACD{fastperiod}#{slowperiod}#{signalperiod}_金死叉V230619".split('_')
+    v1 = "其他"
+    if len(bars) >= 100:
+        dif = [x.cache[cache_key]['dif'] for x in bars]
+        dea = [x.cache[cache_key]['dea'] for x in bars]
+
+        num_k = cross_zero_axis(dif, dea)  # type: ignore
+        dif_temp = get_sub_elements(dif, di=di, n=num_k)
+        dea_temp = get_sub_elements(dea, di=di, n=num_k)
+
+        if dif[-1] < 0 and dea[-1] < 0:
+            down_num_sc = down_cross_count(dif_temp, dea_temp)
+            down_num_jc = down_cross_count(dea_temp, dif_temp)
+            if dif[-1] > dea[-1] and dif[-2] < dea[-2]:
+                v1 = f'0轴下金叉第{down_num_jc}次'
+            elif dif[-1] < dea[-1] and dif[-2] > dea[-2]:
+                v1 = f'0轴下死叉第{down_num_sc}次'
+
+        elif dif[-1] > 0 and dea[-1] > 0:
+            up_num_sc = down_cross_count(dif_temp, dea_temp)
+            up_num_jc = down_cross_count(dea_temp, dif_temp)
+            if dif[-1] > dea[-1] and dif[-2] < dea[-2]:
+                v1 = f'0轴上金叉第{up_num_jc}次'
+            elif dif[-1] < dea[-1] and dif[-2] > dea[-2]:
+                v1 = f'0轴上死叉第{up_num_sc}次'
+
+    return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+
+
+def tas_cross_status_V230624(c: CZSC, **kwargs) -> OrderedDict:
+    """指定金死叉数值信号函数,以此来确定MACD交易区间    贡献者：谌意勇
+
+    参数模板："{freq}_D{di}N{n}MD{md}_MACD交叉数量V230624"
+
+    **信号逻辑：**
+
+    1、通过指定0轴上下金死叉数量，来选择自己想要的指标形态，通过配合其他信号函数出信号
+    2、金叉数量和死叉数量要注意连续对应。0轴上一定是第一次先死叉，再金叉，死叉的数值同
+        金叉数值相比永远是相等或者大1，不能出现>=2的情况，0轴下则反之。
+
+    **信号列表：**
+
+    - Signal('日线_D1N100MD1_MACD交叉数量V230624_0轴上金叉第1次_0轴上死叉第1次_任意_0')
+    - Signal('日线_D1N100MD1_MACD交叉数量V230624_0轴上金叉第1次_0轴上死叉第2次_任意_0')
+    - Signal('日线_D1N100MD1_MACD交叉数量V230624_0轴下金叉第0次_0轴下死叉第0次_任意_0')
+    - Signal('日线_D1N100MD1_MACD交叉数量V230624_0轴下金叉第1次_0轴下死叉第0次_任意_0')
+    - Signal('日线_D1N100MD1_MACD交叉数量V230624_0轴下金叉第1次_0轴下死叉第1次_任意_0')
+    - Signal('日线_D1N100MD1_MACD交叉数量V230624_0轴下金叉第2次_0轴下死叉第1次_任意_0')
+    - Signal('日线_D1N100MD1_MACD交叉数量V230624_0轴下金叉第2次_0轴下死叉第2次_任意_0')
+    - Signal('日线_D1N100MD1_MACD交叉数量V230624_0轴下金叉第3次_0轴下死叉第2次_任意_0')
+    - Signal('日线_D1N100MD1_MACD交叉数量V230624_0轴上金叉第0次_0轴上死叉第0次_任意_0')
+    - Signal('日线_D1N100MD1_MACD交叉数量V230624_0轴上金叉第0次_0轴上死叉第1次_任意_0')
+    - Signal('日线_D1N100MD1_MACD交叉数量V230624_0轴下金叉第3次_0轴下死叉第3次_任意_0')
+    - Signal('日线_D1N100MD1_MACD交叉数量V230624_0轴下金叉第4次_0轴下死叉第3次_任意_0')
+
+    :param c:  czsc对象
+    :param kwargs:
+
+        - di: 倒数第i根K线
+        - n: 从dik往前数n根k线（此数值不需要精确，函数会自动截取最后上下0轴以后的数据）
+        - md: 抖动过滤参数,金死叉之间格距离小于此数值，将被忽略（去除一些杂波扰动因素,最小值不小于1）
+                0轴上下金死叉状态信息，与其他信号加以辅助操作。
+
+    :return: 信号字典
+    """
+    di = int(kwargs.get('di', 1))
+    n = int(kwargs.get('n', 100))
+    md = int(kwargs.get('md', 1))  # md 是 min distance 的缩写，表示金死叉之间格距离小于此数值，将被忽略（去除一些杂波扰动因素,最小值不小于1）
+    assert md >= 1, "md必须大于等于1"
+    freq = c.freq.value
+    cache_key = update_macd_cache(c, **kwargs)
+
+    k1, k2, k3 = f"{freq}_D{di}N{n}MD{md}_MACD交叉数量V230624".split('_')
+    v1 = "其他"
+    v2 = "其他"
+    if len(c.bars_raw) < n + 1:
+        return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+
+    bars = get_sub_elements(c.bars_raw, di=di, n=n)
+    dif = [x.cache[cache_key]['dif'] for x in bars]
+    dea = [x.cache[cache_key]['dea'] for x in bars]
+    num_k = cross_zero_axis(dif, dea)
+    dif_temp = get_sub_elements(dif, di=1, n=num_k)
+    dea_temp = get_sub_elements(dea, di=1, n=num_k)
+    cross = fast_slow_cross(dif_temp, dea_temp)
+
+    jc, sc = cal_cross_num(cross, md)
+
+    if dif[-1] < 0 and dea[-1] < 0:
+        v1 = f'0轴下金叉第{jc}次'
+        v2 = f'0轴下死叉第{sc}次'
+
+    elif dif[-1] > 0 and dea[-1] > 0:
+        v1 = f'0轴上金叉第{jc}次'
+        v2 = f'0轴上死叉第{sc}次'
+
+    return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1, v2=v2)
+
+
+def tas_cross_status_V230625(c: CZSC, **kwargs) -> OrderedDict:
+    """指定金死叉数值信号函数, 以此来确定MACD交易区间    贡献者：谌意勇
+
+    参数模板："{freq}_D{di}N{n}MD{md}J{j}S{s}_MACD交叉数量V230625"
+
+    **信号逻辑：**
+
+    1、通过指定jc或者sc数值来确定为哪第几次金叉或死叉之后的信号。两者最少要指定一个，并且指定其中一个时，另外一个需为0.
+
+    **信号列表：**
+
+    - Signal('15分钟_D1N100MD1J3S0_MACD交叉数量V230625_0轴下第3次金叉以后_任意_任意_0')
+    - Signal('15分钟_D1N100MD1J3S0_MACD交叉数量V230625_0轴上第3次金叉以后_任意_任意_0')
+
+    :param c:  czsc对象
+    :param kwargs:
+
+        - di: 倒数第i根K线
+        - j: 金叉数值
+        - s: 死叉数值
+        - n: 从dik往前数n根k线（此数值不需要精确，函数会自动截取最后上下0轴以后的数据）
+        - md: 抖动过滤参数,金死叉之间格距离小于此数值，将被忽略（去除一些杂波扰动因素,最小值不小于1
+                0轴上下金死叉状态信息，与其他信号加以辅助操作。
+
+    :return: 信号字典
+    """
+    di = int(kwargs.get('di', 1))
+    j = int(kwargs.get('j', 0))
+    s = int(kwargs.get('s', 0))
+    n = int(kwargs.get('n', 100))
+    md = int(kwargs.get('md', 1))
+    freq = c.freq.value
+    cache_key = update_macd_cache(c, **kwargs)
+    assert j * s == 0, "金叉死叉参数错误, j和s必须有一个为0"
+
+    k1, k2, k3 = f"{freq}_D{di}N{n}MD{md}J{j}S{s}_MACD交叉数量V230625".split('_')
+    v1 = "其他"
+    if len(c.bars_raw) < di + n + 1:
+        return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+
+    bars = get_sub_elements(c.bars_raw, di=di, n=n)
+    dif = [x.cache[cache_key]['dif'] for x in bars]
+    dea = [x.cache[cache_key]['dea'] for x in bars]
+    num_k = cross_zero_axis(dif, dea)
+    dif_temp = get_sub_elements(dif, di=1, n=num_k)
+    dea_temp = get_sub_elements(dea, di=1, n=num_k)
+    cross = fast_slow_cross(dif_temp, dea_temp)
+
+    jc, sc = cal_cross_num(cross, md)
+
+    if dif[-1] < 0 and dea[-1] < 0:
+        if jc >= j and s == 0:
+            v1 = f'0轴下第{j}次金叉以后'
+        elif j == 0 and sc >= s:
+            v1 = f'0轴下第{s}次死叉以后'
+
+    elif dif[-1] > 0 and dea[-1] > 0:
+        if jc >= j and s == 0:
+            v1 = f'0轴上第{j}次金叉以后'
+        elif j == 0 and sc >= s:
+            v1 = f'0轴上第{s}次死叉以后'
+
+    return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+
+
+def tas_low_trend_V230627(c: CZSC, **kwargs) -> OrderedDict:
+    """阴跌趋势、小阳趋势
+
+    参数模板："{freq}_D{di}N{n}TH{th}_趋势230627"
+
+    **信号逻辑：**
+
+    1、阴跌趋势：在连续N根K线上rolling计数，如果当前最低价小于rolling min close，min_count + 1
+        ，当 min_count > 0.8 * n 且 N根K线中振幅超过TH的K线数量小于0.2 * N，则为阴跌趋势；
+    2. 小阳趋势：在连续N根K线上rolling计数，如果当前最高价大于rolling max close，max_count + 1
+        ，当 max_count > 0.8 * n 且 N根K线中振幅超过TH的K线数量小于0.2 * N，则为小阳趋势；
+
+    **信号列表：**
+
+    - Signal('15分钟_D1N13TH500_趋势230627_阴跌趋势_任意_任意_0')
+    - Signal('15分钟_D1N13TH500_趋势230627_小阳趋势_任意_任意_0')
+
+    :param c:  czsc对象
+    :param kwargs:
+
+        - di: 倒数第i根K线
+        - n: 从dik往前数n根k线（此数值不需要精确，函数会自动截取最后上下0轴以后的数据）
+        - th: 实体振幅阈值，单位为 BP
+
+    :return: 信号字典
+    """
+    di = int(kwargs.get('di', 1))
+    n = int(kwargs.get('n', 13))
+    th = int(kwargs.get('th', 300))
+    freq = c.freq.value
+    k1, k2, k3 = f"{freq}_D{di}N{n}TH{th}_趋势230627".split('_')
+    v1 = "其他"
+    if len(c.bars_raw) < di + n + 8:
+        return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+
+    bars = get_sub_elements(c.bars_raw, di=di, n=n + 5)
+    solid_zf = [abs(x.close / x.open - 1) * 10000 for x in bars[5:]]
+    if len([x for x in solid_zf if x > th]) > max(0.2 * n, 3):
+        return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+
+    min_count = 0
+    max_count = 0
+    for i in range(5, len(bars)):
+        bar, w5 = bars[i], bars[:i]
+        if bar.low <= min([x.close for x in w5]):
+            min_count += 1
+        if bar.high >= max([x.close for x in w5]):
+            max_count += 1
+
+    if min_count >= 0.8 * n:
+        v1 = "阴跌趋势"
+    if max_count >= 0.8 * n:
+        v1 = "小阳趋势"
+    return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+
+
+def tas_atr_V230630(c: CZSC, **kwargs) -> OrderedDict:
+    """ATR波动强弱
+
+    参数模板："{freq}_D{di}ATR{timeperiod}_波动V230630"
+
+    **信号逻辑：**
+
+    ATR与收盘价的比值衡量了价格振幅比率的大小，对这个值进行分层。
+    
+    **信号列表：**
+
+    - Signal('日线_D1ATR14_波动V230630_第7层_任意_任意_0')
+    - Signal('日线_D1ATR14_波动V230630_第6层_任意_任意_0')
+    - Signal('日线_D1ATR14_波动V230630_第8层_任意_任意_0')
+    - Signal('日线_D1ATR14_波动V230630_第9层_任意_任意_0')
+    - Signal('日线_D1ATR14_波动V230630_第10层_任意_任意_0')
+    - Signal('日线_D1ATR14_波动V230630_第5层_任意_任意_0')
+    - Signal('日线_D1ATR14_波动V230630_第4层_任意_任意_0')
+    - Signal('日线_D1ATR14_波动V230630_第3层_任意_任意_0')
+    - Signal('日线_D1ATR14_波动V230630_第2层_任意_任意_0')
+    - Signal('日线_D1ATR14_波动V230630_第1层_任意_任意_0')
+    
+    :param c:  czsc对象
+    :param kwargs:
+
+        - di: 倒数第i根K线
+        - timeperiod: ATR指标的参数
+
+    :return: 信号字典
+    """
+    di = int(kwargs.get('di', 1))
+    timeperiod = int(kwargs.get('timeperiod', 14))
+    freq = c.freq.value
+    cache_key = update_atr_cache(c, timeperiod=timeperiod)
+    k1, k2, k3 = f"{freq}_D{di}ATR{timeperiod}_波动V230630".split('_')
+    v1 = "其他"
+    if len(c.bars_raw) < di + timeperiod + 8:
+        return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+
+    bars = get_sub_elements(c.bars_raw, di=di, n=100)
+    lev = [bar.cache[cache_key] / bar.close for bar in bars]
+    lev = pd.qcut(lev, 10, labels=False, duplicates='drop')[-1]
+    return create_single_signal(k1=k1, k2=k2, k3=k3, v1=f"第{int(lev+1)}层")
+
+
+def tas_rumi_V230704(c: CZSC, **kwargs) -> OrderedDict:
+    """对均线偏离度平滑处理,通过平滑处理的方式降低DIFF的敏感度来解决均线缠绕的问题 贡献者：谌意勇
+
+    参数模板："{freq}_D{di}F{timeperiod1}S{timeperiod2}R{rumi_window}_BS辅助V230704"
+
+    **信号逻辑：**
+
+    RUMI 计算参考：
+    1. https://zhuanlan.zhihu.com/p/610377004
+    2. https://zhuanlan.zhihu.com/p/618394552
+
+    多空规则：
+    1. RUMI上穿0轴，买入做多
+    2. RUMI下穿0轴，卖出做空。
+
+    **信号列表：**
+
+    - Signal('60分钟_D1F3S50R30_BS辅助V230704_空头_任意_任意_0')
+    - Signal('60分钟_D1F3S50R30_BS辅助V230704_多头_任意_任意_0')
+
+    :param c: CZSC对象
+    :param kwargs:
+
+        - di: 信号计算截止倒数第i根K线
+        - timeperiod1: 均线1的周期
+        - timeperiod2: 均线2的周期
+        - rumi_window: rumi的周期
+
+    :return: 信号识别结果
+    """
+    di = int(kwargs.get('di', 1))
+    rumi_window = int(kwargs.get('rumi_window', 30))
+    timeperiod1 = int(kwargs.get('timeperiod1', 3))
+    timeperiod2 = int(kwargs.get('timeperiod2', 50))
+    
+    assert rumi_window < timeperiod2, "rumi_window 必须小于 timeperiod2"
+    freq = c.freq.value
+    k1, k2, k3 = f"{freq}_D{di}F{timeperiod1}S{timeperiod2}R{rumi_window}_BS辅助V230704".split('_')
+    v1 = '其他'
+    
+    if len(c.bars_raw) < di + timeperiod2:
+        return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+     
+    key1 = update_ma_cache(c, ma_type='SMA', timeperiod=timeperiod1)
+    key2 = update_ma_cache(c, ma_type='WMA', timeperiod=timeperiod2)
+    bars = get_sub_elements(c.bars_raw, di=di, n=timeperiod2)
+    fast_array = np.array([x.cache[key1] for x in bars])
+    slow_array = np.array([x.cache[key2] for x in bars])
+    diff_array = fast_array - slow_array
+    rumi_array = ta.MA(diff_array, timeperiod=rumi_window, matype=ta.MA_Type.SMA)
+
+    if rumi_array[-1] > 0 and rumi_array[-2] < 0:
+        v1='多头'
+    elif rumi_array[-1] < 0 and rumi_array[-2] > 0:
+        v1='空头'
 
     return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)

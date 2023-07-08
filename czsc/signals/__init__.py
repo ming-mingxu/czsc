@@ -5,9 +5,6 @@ email: zeng_bin8888@163.com
 create_dt: 2021/11/21 17:48
 describe: 信号系统，注意：这里仅仅只是提供一些写信号的例子，用来做策略是不太行的
 """
-
-from . import bxt
-
 # ======================================================================================================================
 # 以下是 0.9.1 开始的新标准下实现的信号函数，规范定义：
 # 1. 前缀3个字符区分信号类别
@@ -35,6 +32,15 @@ from czsc.signals.cxt import (
     cxt_second_bs_V230320,
     cxt_bi_status_V230101,
     cxt_bi_status_V230102,
+    cxt_bi_zdf_V230601,
+    cxt_bi_end_V230618,
+    cxt_three_bi_V230618,
+    cxt_five_bi_V230619,
+    cxt_seven_bi_V230620,
+    cxt_nine_bi_V230621,
+    cxt_eleven_bi_V230622,
+    cxt_range_oscillation_V230620,
+    cxt_intraday_V230701,
 )
 
 
@@ -43,10 +49,15 @@ from czsc.signals.byi import (
     byi_bi_end_V230106,
     byi_bi_end_V230107,
     byi_second_bs_V230324,
+    byi_fx_num_V230628,
 )
 
 from czsc.signals.coo import (
     coo_td_V221110,
+    coo_td_V221111,
+    coo_cci_V230323,
+    coo_kdj_V230322,
+    coo_sar_V230325,
 )
 
 from czsc.signals.vol import (
@@ -82,6 +93,10 @@ from czsc.signals.bar import (
     bar_single_V230506,
     bar_triple_V230506,
     bar_zt_count_V230504,
+    bar_tnr_V230629,
+    bar_tnr_V230630,
+    bar_shuang_fei_V230507,
+    bar_limit_down_V230525,
 )
 
 from czsc.signals.jcc import (
@@ -159,8 +174,17 @@ from czsc.signals.tas import (
     tas_kdj_evc_V230401,
 
     tas_atr_break_V230424,
-
     tas_sar_base_V230425,
+    tas_macd_bs1_V230411,
+    tas_macd_bs1_V230412,
+    tas_cross_status_V230619,
+    tas_cross_status_V230624,
+    tas_cross_status_V230625,
+    tas_low_trend_V230627,
+    tas_atr_V230630,
+    tas_accelerate_V230531,
+
+    tas_rumi_V230704,
 )
 
 from czsc.signals.pos import (
@@ -168,4 +192,21 @@ from czsc.signals.pos import (
     pos_ma_V230414,
     pos_holds_V230414,
     pos_bar_stop_V230524,
+    pos_fix_exit_V230624,
+    pos_profit_loss_V230624,
+)
+
+
+from czsc.signals.ang import (
+    adtm_up_dw_line_V230603,
+    amv_up_dw_line_V230603,
+    asi_up_dw_line_V230603,
+    clv_up_dw_line_V230605,
+    cmo_up_dw_line_V230605,
+    skdj_up_dw_line_V230611,
+    bias_up_dw_line_V230618,
+    dema_up_dw_line_V230605,
+    demakder_up_dw_line_V230605,
+    emv_up_dw_line_V230605,
+    er_up_dw_line_V230604,
 )
