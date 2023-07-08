@@ -16,7 +16,6 @@ from czsc.traders.base import generate_czsc_signals
 from czsc.utils.io import save_json
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-
 class EventMatchSensor:
     def __init__(self,  events: List[Union[Dict[str, Any], Event]], symbols: List[str], read_bars: Callable, **kwargs) -> None:
         """
