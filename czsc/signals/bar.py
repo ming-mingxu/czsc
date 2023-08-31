@@ -1400,3 +1400,235 @@ def bar_limit_down_V230525(c: CZSC, **kwargs) -> OrderedDict:
         v1 = '满足'
 
     return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+
+
+def bar_eight_V230702(c: CZSC, **kwargs) -> OrderedDict:
+    """8K走势分类
+
+    参数模板："{freq}_D{di}#8K_走势分类V230702"
+
+    **信号逻辑：**
+
+    参见博客：https://blog.sina.com.cn/s/blog_486e105c010009uy.html
+    这篇博客给出了8K走势分类的逻辑。
+
+    **信号列表：**
+
+    - Signal('30分钟_D1#8K_走势分类V230702_弱平衡市_任意_任意_0')
+    - Signal('30分钟_D1#8K_走势分类V230702_双中枢下跌_任意_任意_0')
+    - Signal('30分钟_D1#8K_走势分类V230702_转折平衡市_任意_任意_0')
+    - Signal('30分钟_D1#8K_走势分类V230702_强平衡市_任意_任意_0')
+    - Signal('30分钟_D1#8K_走势分类V230702_双中枢上涨_任意_任意_0')
+    - Signal('30分钟_D1#8K_走势分类V230702_无中枢上涨_任意_任意_0')
+    - Signal('30分钟_D1#8K_走势分类V230702_无中枢下跌_任意_任意_0')
+
+    :param c: CZSC对象
+    :return: 信号识别结果
+    """
+    di = int(kwargs.get("di", 1))
+    freq = c.freq.value
+    k1, k2, k3 = f"{freq}_D{di}#8K_走势分类V230702".split("_")
+    v1 = "其他"
+    if len(c.bars_raw) < di + 12:
+        return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+
+    bars = get_sub_elements(c.bars_raw, di=di, n=8)
+    zs_list = []
+    for b1, b2, b3 in zip(bars[:-2], bars[1:-1], bars[2:]):
+        if min(b1.high, b2.high, b3.high) >= max(b1.low, b2.low, b3.low):
+            zs_list.append([b1, b2, b3])
+    
+    _dir = "上涨" if bars[-1].close > bars[0].open else "下跌"
+
+    if not zs_list:
+        v1 = f"无中枢{_dir}"
+        return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+    
+    # 双中枢的情况，有一根K线的 high low 与前后两个中枢没有重叠
+    if len(zs_list) >= 2:
+        zs1, zs2 = zs_list[0], zs_list[-1]
+        zs1_high, zs1_low = max([x.high for x in zs1]), min([x.low for x in zs1])
+        zs2_high, zs2_low = max([x.high for x in zs2]), min([x.low for x in zs2])
+        if _dir == "上涨" and zs1_high < zs2_low:
+            v1 = f"双中枢{_dir}"
+            return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+        
+        if _dir == "下跌" and zs1_low > zs2_high:
+            v1 = f"双中枢{_dir}"
+            return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+        
+    # 单中枢的情况，前三根K线出现高点：弱平衡市，前三根K线出现低点：强平衡市，否则：转折平衡市
+    high_first = max(bars[0].high, bars[1].high, bars[2].high) == max([x.high for x in bars])
+    low_first = min(bars[0].low, bars[1].low, bars[2].low) == min([x.low for x in bars])
+    if high_first and not low_first:
+        v1 = "弱平衡市"
+    elif low_first and not high_first:
+        v1 = "强平衡市"
+    else:
+        v1 = "转折平衡市"
+        
+    return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+
+
+def bar_window_std_V230731(c: CZSC, **kwargs) -> OrderedDict:
+    """指定窗口内波动率的特征
+
+    参数模板："{freq}_D{di}W{window}M{m}N{n}_窗口波动V230731"
+
+    **信号逻辑：**
+
+    滚动计算最近m根K线的波动率，分成n层，最大值为n，最小值为1；
+    最近window根K线的最大值为max_layer，最小值为min_layer。
+    以这两个值作为窗口内的波动率特征。
+
+    **信号列表：**
+
+    - Signal('60分钟_D2W3M100N10_窗口波动V230731_高波N7_低波N6_任意_0')
+    - Signal('60分钟_D2W3M100N10_窗口波动V230731_高波N6_低波N6_任意_0')
+    - Signal('60分钟_D2W3M100N10_窗口波动V230731_高波N8_低波N6_任意_0')
+    - Signal('60分钟_D2W3M100N10_窗口波动V230731_高波N9_低波N6_任意_0')
+    - Signal('60分钟_D2W3M100N10_窗口波动V230731_高波N9_低波N9_任意_0')
+    - Signal('60分钟_D2W3M100N10_窗口波动V230731_高波N9_低波N8_任意_0')
+    - Signal('60分钟_D2W3M100N10_窗口波动V230731_高波N8_低波N8_任意_0')
+    - Signal('60分钟_D2W3M100N10_窗口波动V230731_高波N8_低波N7_任意_0')
+    - Signal('60分钟_D2W3M100N10_窗口波动V230731_高波N7_低波N7_任意_0')
+    - Signal('60分钟_D2W3M100N10_窗口波动V230731_高波N7_低波N5_任意_0')
+    - Signal('60分钟_D2W3M100N10_窗口波动V230731_高波N6_低波N5_任意_0')
+    - Signal('60分钟_D2W3M100N10_窗口波动V230731_高波N5_低波N4_任意_0')
+    - Signal('60分钟_D2W3M100N10_窗口波动V230731_高波N5_低波N3_任意_0')
+    - Signal('60分钟_D2W3M100N10_窗口波动V230731_高波N4_低波N3_任意_0')
+
+    :param c: CZSC对象
+    :param kwargs: 参数字典
+    
+        - :param di: 信号计算截止倒数第i根K线
+        - :param w: 观察的窗口大小。
+        - :param m: 计算分位数所需取K线的数量。
+        - :param n: 分层的数量。
+
+    :return: 信号识别结果
+    """
+    di = int(kwargs.get("di", 1))
+    w = int(kwargs.get("w", 5))
+    m = int(kwargs.get("m", 100))
+    n = int(kwargs.get("n", 10))
+
+    # 更新STD20波动率缓存
+    cache_key = "STD20"
+    for i, bar in enumerate(c.bars_raw):
+        if cache_key in bar.cache:
+            continue
+        bar.cache[cache_key] = 0 if i < 5 else np.std([x.close for x in c.bars_raw[max(i-20, 0):i]])
+
+    freq = c.freq.value
+    k1, k2, k3 = f"{freq}_D{di}W{w}M{m}N{n}_窗口波动V230731".split('_')
+    v1 = "其他"
+
+    if len(c.bars_raw) < di + m + w:
+        return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1)
+
+    stds = [x.cache[cache_key] for x in get_sub_elements(c.bars_raw, di=di, n=m)]
+    layer = pd.qcut(stds, n, labels=False, duplicates='drop')
+    max_layer = max(layer[-w:]) + 1
+    min_layer = min(layer[-w:]) + 1
+
+    v1, v2 = f"高波N{max_layer}", f"低波N{min_layer}"
+    return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1, v2=v2)
+
+
+
+def bar_window_ps_V230731(c: CZSC, **kwargs) -> OrderedDict:
+    """指定窗口内支撑压力位分位数计算，贡献者：chenlei
+
+    参数模板："{freq}_W{w}M{m}N{n}L{l}_支撑压力位V230731"
+
+    **信号逻辑：**
+
+    1. 计算最近 N 笔的最高价 NH 和最低价 NL，这个可以近似理解成价格的支撑和压力位
+    2. 计算并缓存最新K线的收盘价格 C 处于 NH、NL 之间的位置，计算方法为 P = （C - NL）/ (NH - NL)
+    3. 取最近 M 个 P 值序列，按分位数分层，分层数量为 L，分层的最大值为最近的压力，最小值为最近的支撑，当前值为最近的价格位置
+
+    **信号列表：**
+
+    - Signal('15分钟_W5M40N8L5_支撑压力位V230731_压力N5_支撑N5_当前N5_0')
+    - Signal('15分钟_W5M40N8L5_支撑压力位V230731_压力N5_支撑N4_当前N5_0')
+    - Signal('15分钟_W5M40N8L5_支撑压力位V230731_压力N5_支撑N4_当前N4_0')
+    - Signal('15分钟_W5M40N8L5_支撑压力位V230731_压力N5_支撑N3_当前N5_0')
+    - Signal('15分钟_W5M40N8L5_支撑压力位V230731_压力N5_支撑N2_当前N2_0')
+    - Signal('15分钟_W5M40N8L5_支撑压力位V230731_压力N5_支撑N1_当前N2_0')
+
+    :param c: CZSC对象
+    :param kwargs: 参数字典
+
+        - :param w: 评价分位数分布用的窗口大小
+        - :param m: 计算分位数所需取K线的数量。
+        - :param n: 最近N笔
+        - :param l: 分层的数量。
+
+    :return: 信号识别结果
+    """
+    w = int(kwargs.get("w", 5))
+    m = int(kwargs.get("m", 40))
+    n = int(kwargs.get("n", 8))
+    l = int(kwargs.get("l", 5))
+
+    assert m > l * 2 > 2, "参数 m 必须大于 l * 2，且 l 必须大于 2"
+    assert w < m, "参数 w 必须小于 m"
+
+    freq = c.freq.value
+    k1, k2, k3 = f"{freq}_W{w}M{m}N{n}L{l}_支撑压力位V230731".split('_')
+    if len(c.bi_list) <  n+2:
+        return create_single_signal(k1=k1, k2=k2, k3=k3, v1="其他")
+
+    # 更新支撑压力位位置
+    cache_key_pct = "pct"
+    H_line, L_line = max([x.high for x in c.bi_list[-n:]]), min([x.low for x in c.bi_list[-n:]])
+    for i, bar in enumerate(c.bars_raw):
+        if cache_key_pct in bar.cache:
+            continue  
+        bar.cache[cache_key_pct] = (bar.close - L_line) / (H_line - L_line)
+
+    fenweis = [x.cache[cache_key_pct] for x in get_sub_elements(c.bars_raw, n=m)]
+    layer = pd.qcut(fenweis, l, labels=False, duplicates='drop')
+    max_layer = max(layer[-w:]) + 1
+    min_layer = min(layer[-w:]) + 1
+
+    v1, v2, v3 = f"压力N{max_layer}", f"支撑N{min_layer}", f"当前N{layer[-1]+1}"
+    return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1, v2=v2, v3=v3)
+
+
+def bar_window_ps_V230801(c: CZSC, **kwargs) -> OrderedDict:
+    """指定窗口内支撑压力位分位数计算
+
+    参数模板："{freq}_N{n}W{w}_支撑压力位V230801"
+
+    **信号逻辑：**
+
+    1. 计算最近 N 笔的最高价 NH 和最低价 NL，这个可以近似理解成价格的支撑和压力位
+    2. 计算并缓存最新K线的收盘价格 C 处于 NH、NL 之间的位置，计算方法为 P = （C - NL）/ (NH - NL)
+    3. 取最近 M 个 P 值序列，四舍五入精确到小数点后1位，作为当前K线的分位数
+
+    **信号列表：**
+
+    :param c: CZSC对象
+    :param kwargs: 参数字典
+
+        - :param w: 评价分位数分布用的窗口大小
+        - :param n: 最近N笔
+
+    :return: 信号识别结果
+    """
+    w = int(kwargs.get("w", 5))
+    n = int(kwargs.get("n", 8))
+
+    freq = c.freq.value
+    k1, k2, k3 = f"{freq}_N{n}W{w}_支撑压力位V230801".split('_')
+    if len(c.bi_list) < n+2:
+        return create_single_signal(k1=k1, k2=k2, k3=k3, v1="其他")
+
+    ubi = c.ubi
+    H_line, L_line = max([x.high for x in c.bi_list[-n:]] + [ubi['high']]), min([x.low for x in c.bi_list[-n:]] + [ubi['low']])
+
+    pcts = [int(max((x.close - L_line) / (H_line - L_line), 0) * 10) for x in c.bars_raw[-w:]]
+    v1, v2, v3 = f"最大N{max(pcts)}", f"最小N{min(pcts)}", f"当前N{pcts[-1]}"
+    return create_single_signal(k1=k1, k2=k2, k3=k3, v1=v1, v2=v2, v3=v3)

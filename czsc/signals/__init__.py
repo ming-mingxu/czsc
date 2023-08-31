@@ -41,6 +41,10 @@ from czsc.signals.cxt import (
     cxt_eleven_bi_V230622,
     cxt_range_oscillation_V230620,
     cxt_intraday_V230701,
+    cxt_ubi_end_V230816,
+    cxt_bi_end_V230815,
+    cxt_bi_stop_V230815,
+    cxt_bi_trend_V230824,
 )
 
 
@@ -65,6 +69,8 @@ from czsc.signals.vol import (
     vol_double_ma_V230214,
     vol_ti_suo_V221216,
     vol_gao_di_V221218,
+    vol_window_V230731,
+    vol_window_V230801,
 )
 
 from czsc.signals.bar import (
@@ -97,6 +103,10 @@ from czsc.signals.bar import (
     bar_tnr_V230630,
     bar_shuang_fei_V230507,
     bar_limit_down_V230525,
+    bar_eight_V230702,
+    bar_window_std_V230731,
+    bar_window_ps_V230731,
+    bar_window_ps_V230801,
 )
 
 from czsc.signals.jcc import (
@@ -183,8 +193,17 @@ from czsc.signals.tas import (
     tas_low_trend_V230627,
     tas_atr_V230630,
     tas_accelerate_V230531,
+    tas_angle_V230802,
 
     tas_rumi_V230704,
+    tas_macd_dist_V230408,
+    tas_macd_dist_V230409,
+    tas_macd_dist_V230410,
+    cat_macd_V230518,
+    cat_macd_V230520,
+    tas_macd_bc_V230803,
+    tas_macd_bc_V230804,
+    tas_macd_bc_ubi_V230804,
 )
 
 from czsc.signals.pos import (
@@ -194,6 +213,8 @@ from czsc.signals.pos import (
     pos_bar_stop_V230524,
     pos_fix_exit_V230624,
     pos_profit_loss_V230624,
+    pos_status_V230808,
+    pos_holds_V230807,
 )
 
 
@@ -209,4 +230,31 @@ from czsc.signals.ang import (
     demakder_up_dw_line_V230605,
     emv_up_dw_line_V230605,
     er_up_dw_line_V230604,
+    obvm_line_V230610,
+    obv_up_dw_line_V230719,
+    cvolp_up_dw_line_V230612,
+    kcatr_up_dw_line_V230823,
+    ntmdk_V230824,
+)
+
+
+from czsc.signals.zdy import (
+    zdy_stop_loss_V230406,
+    zdy_vibrate_V230406,
+    zdy_bi_end_V230406,
+    zdy_take_profit_V230407,
+    zdy_take_profit_V230406,
+    zdy_zs_V230423,
+    zdy_macd_bc_V230422,
+    zdy_zs_space_V230421,
+    zdy_bi_end_V230407,
+    zdy_macd_bs1_V230422,
+    zdy_macd_dif_V230516,
+    zdy_macd_dif_V230517,
+    zdy_macd_V230518,
+    zdy_macd_V230519,
+    zdy_macd_dif_iqr_V230521,
+    zdy_macd_V230527,
+    zdy_dif_V230527,
+    zdy_dif_V230528,
 )
