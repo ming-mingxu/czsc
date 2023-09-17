@@ -14,7 +14,7 @@ from loguru import logger
 from datetime import datetime, timedelta
 from deprecated import deprecated
 from collections import OrderedDict
-from typing import Callable, List, AnyStr, Union
+from typing import Callable, List, AnyStr, Union, Optional
 from pyecharts.charts import Tab
 from pyecharts.components import Table
 from pyecharts.options import ComponentTitleOpts
@@ -29,7 +29,7 @@ from czsc.traders.sig_parse import get_signals_freqs
 class CzscSignals:
     """缠中说禅技术分析理论之多级别信号计算"""
 
-    def __init__(self, bg: BarGenerator = None,  **kwargs):
+    def __init__(self, bg: Optional[BarGenerator] = None, **kwargs):
         """
 
         :param bg: K线合成器
@@ -69,12 +69,14 @@ class CzscSignals:
         """通过信号参数配置获取信号
 
         信号参数配置，格式如下：
+
             signals_config = [
                 {'name': 'czsc.signals.tas_ma_base_V221101', 'freq': '日线', 'di': 1, 'ma_type': 'SMA', 'timeperiod': 5},
                 {'name': 'czsc.signals.tas_ma_base_V221101', 'freq': '日线', 'di': 5, 'ma_type': 'SMA', 'timeperiod': 5},
                 {'name': 'czsc.signals.tas_double_ma_V221203', 'freq': '日线', 'di': 1, 'ma_seq': (5, 20), 'th': 100},
                 {'name': 'czsc.signals.tas_double_ma_V221203', 'freq': '日线', 'di': 5, 'ma_seq': (5, 20), 'th': 100},
             ]
+
         :return: 信号字典
         """
         s = OrderedDict()
@@ -152,32 +154,6 @@ class CzscSignals:
         self.s.update(last_bar.__dict__)
 
 
-@deprecated(version="0.9.16", reason="请使用 CzscSignals 类")
-def get_signals_by_conf(cat: CzscSignals, conf):
-    """通过信号参数配置获取信号
-
-    :param cat:
-    :param conf: 信号参数配置，格式如下：
-        conf = [
-            {'name': 'czsc.signals.tas_ma_base_V221101', 'freq': '日线', 'di': 1, 'ma_type': 'SMA', 'timeperiod': 5},
-            {'name': 'czsc.signals.tas_ma_base_V221101', 'freq': '日线', 'di': 5, 'ma_type': 'SMA', 'timeperiod': 5},
-            {'name': 'czsc.signals.tas_double_ma_V221203', 'freq': '日线', 'di': 1, 'ma_seq': (5, 20), 'th': 100},
-            {'name': 'czsc.signals.tas_double_ma_V221203', 'freq': '日线', 'di': 5, 'ma_seq': (5, 20), 'th': 100},
-        ]
-    :return: 信号字典
-    """
-    s = OrderedDict({"symbol": cat.symbol, "dt": cat.end_dt, "close": cat.latest_price})
-    for param in conf:
-        param = dict(param)
-        sig_func = import_by_name(param.pop('name'))
-        freq = param.pop('freq', None)
-        if freq in cat.kas:  # 如果指定了 freq，那么就使用 CZSC 对象作为输入
-            s.update(sig_func(cat.kas[freq], **param))
-        else:                # 否则使用 CAT 作为输入
-            s.update(sig_func(cat, **param))
-    return s
-
-
 def generate_czsc_signals(bars: List[RawBar], signals_config: List[dict],
                           sdt: Union[AnyStr, datetime] = "20170101", init_n: int = 500, df=False, **kwargs):
     """使用 CzscSignals 生成信号
@@ -197,13 +173,13 @@ def generate_czsc_signals(bars: List[RawBar], signals_config: List[dict],
     """
     freqs = get_signals_freqs(signals_config)
     freqs = [freq for freq in freqs if freq != bars[0].freq.value]
-    sdt = pd.to_datetime(sdt)
-    bars_left = [x for x in bars if x.dt < sdt]
+    sdt = pd.to_datetime(sdt)                       # type: ignore
+    bars_left = [x for x in bars if x.dt < sdt]     # type: ignore
     if len(bars_left) <= init_n:
         bars_left = bars[:init_n]
         bars_right = bars[init_n:]
     else:
-        bars_right = [x for x in bars if x.dt >= sdt]
+        bars_right = [x for x in bars if x.dt >= sdt]   # type: ignore
 
     if len(bars_right) == 0:
         logger.warning("右侧K线为空，无法进行信号生成", category=RuntimeWarning)
@@ -249,6 +225,7 @@ def check_signals_acc(bars: List[RawBar], signals_config: List[dict], delta_days
     s_cols = [x for x in df.columns if len(x.split("_")) == 3]
     signals = []
     for col in s_cols:
+        print('=' * 100, "\n", df[col].value_counts())
         signals.extend([Signal(f"{col}_{v}") for v in df[col].unique() if "其他" not in v])
 
     print(f"signals: {'+' * 100}")
@@ -301,7 +278,7 @@ def get_unique_signals(bars: List[RawBar], signals_config: List[dict], **kwargs)
 class CzscTrader(CzscSignals):
     """缠中说禅技术分析理论之多级别联立交易决策类（支持多策略独立执行）"""
 
-    def __init__(self, bg: BarGenerator = None, positions: List[Position] = None,
+    def __init__(self, bg: Optional[BarGenerator] = None, positions: Optional[List[Position]] = None,
                  ensemble_method: Union[AnyStr, Callable] = "mean", **kwargs):
         """
 
@@ -314,7 +291,8 @@ class CzscTrader(CzscSignals):
             vote - 投票表决，pos = 1
             max  - 取最大，pos = 1
 
-            对于传入回调函数的情况，输入是 self.positions
+            对于传入回调函数的情况，函数的输入为 dict，key 为 position.name，value 为 position.pos, 样例输入：
+            {'多头策略A': 1, '多头策略B': 1, '空头策略A': -1}
         """
         self.positions = positions
         if self.positions:
@@ -403,9 +381,24 @@ class CzscTrader(CzscSignals):
                 raise ValueError
 
         else:
-            pos = method(self.positions)
+            pos = method({x.name: x.pos for x in self.positions})
 
         return pos
+
+    def get_position(self, name: str) -> Optional[Position]:
+        """获取指定名称的仓位策略对象
+
+        :param name: 仓位名称
+        :return: Position
+        """
+        if not self.positions:
+            return None
+
+        for position in self.positions:
+            if position.name == name:
+                return position
+
+        return None
 
     def take_snapshot(self, file_html=None, width: str = "1400px", height: str = "580px"):
         """获取快照
@@ -457,3 +450,40 @@ class CzscTrader(CzscSignals):
         else:
             return tab
 
+    def get_ensemble_weight(self, method: Optional[Union[AnyStr, Callable]] = None):
+        """获取 CzscTrader 中所有 positions 按照 method 方法集成之后的权重
+
+        :param method: str or callable
+            集成方法，可选值包括：'mean', 'max', 'min', 'vote'
+            也可以传入自定义的函数，函数的输入为 dict，key 为 position.name，value 为 position.pos, 样例输入：
+                {'多头策略A': 1, '多头策略B': 1, '空头策略A': -1}
+        :param kwargs:
+        :return: pd.DataFrame
+            columns = ['dt', 'symbol', 'weight', 'price']
+        """
+        from czsc.traders.weight_backtest import get_ensemble_weight
+        method = self.__ensemble_method if not method else method
+        return get_ensemble_weight(self, method)
+
+    def weight_backtest(self, **kwargs):
+        """执行仓位集成权重的回测
+
+        :param kwargs:
+
+            - method: str or callable，集成方法，参考 get_ensemble_weight 方法
+            - digits: int，权重小数点后保留的位数，例如 2 表示保留两位小数
+            - fee_rate: float，手续费率，例如 0.0002 表示万二
+            - res_path: str，回测结果保存路径
+
+        :return: 回测结果
+        """
+        from czsc.traders.weight_backtest import WeightBacktest
+
+        method = kwargs.get("method", self.__ensemble_method)
+        digits = kwargs.get("digits", 2)
+        fee_rate = kwargs.get("fee_rate", 0.0002)
+        res_path = kwargs.get("res_path", "./weight_backtest")
+        dfw = self.get_ensemble_weight(method)
+        wb = WeightBacktest(dfw, digits=digits, fee_rate=fee_rate, res_path=res_path)
+        _res = wb.backtest()
+        return _res

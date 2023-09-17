@@ -7,9 +7,8 @@ describe: 缠论分型、笔的识别
 """
 import os
 import webbrowser
-import numpy as np
 from loguru import logger
-from typing import List, Callable
+from typing import List
 from collections import OrderedDict
 from czsc.enum import Mark, Direction
 from czsc.objects import BI, FX, RawBar, NewBar
@@ -27,7 +26,7 @@ def remove_include(k1: NewBar, k2: NewBar, k3: RawBar):
         direction = Direction.Down
     else:
         k4 = NewBar(symbol=k3.symbol, id=k3.id, freq=k3.freq, dt=k3.dt, open=k3.open,
-                    close=k3.close, high=k3.high, low=k3.low, vol=k3.vol, elements=[k3])
+                    close=k3.close, high=k3.high, low=k3.low, vol=k3.vol, amount=k3.amount, elements=[k3])
         return False, k4
 
     # 判断 k2 和 k3 之间是否存在包含关系，有则处理
@@ -45,15 +44,16 @@ def remove_include(k1: NewBar, k2: NewBar, k3: RawBar):
 
         open_, close = (high, low) if k3.open > k3.close else (low, high)
         vol = k2.vol + k3.vol
+        amount = k2.amount + k3.amount
         # 这里有一个隐藏Bug，len(k2.elements) 在一些及其特殊的场景下会有超大的数量，具体问题还没找到；
         # 临时解决方案是直接限定len(k2.elements)<=100
         elements = [x for x in k2.elements[:100] if x.dt != k3.dt] + [k3]
         k4 = NewBar(symbol=k3.symbol, id=k2.id, freq=k2.freq, dt=dt, open=open_,
-                    close=close, high=high, low=low, vol=vol, elements=elements)
+                    close=close, high=high, low=low, vol=vol, amount=amount, elements=elements)
         return True, k4
     else:
         k4 = NewBar(symbol=k3.symbol, id=k3.id, freq=k3.freq, dt=k3.dt, open=k3.open,
-                    close=k3.close, high=k3.high, low=k3.low, vol=k3.vol, elements=[k3])
+                    close=k3.close, high=k3.high, low=k3.low, vol=k3.vol, amount=k3.amount, elements=[k3])
         return False, k4
 
 
@@ -75,26 +75,17 @@ def check_fxs(bars: List[NewBar]) -> List[FX]:
     """输入一串无包含关系K线，查找其中所有分型"""
     fxs = []
     for i in range(1, len(bars)-1):
-        fx: FX = check_fx(bars[i-1], bars[i], bars[i+1])
+        fx = check_fx(bars[i-1], bars[i], bars[i+1])
         if isinstance(fx, FX):
-            # 这里可能隐含Bug，默认情况下，fxs本身是顶底交替的，但是对于一些特殊情况下不是这样，这是不对的。
-            # 临时处理方案，强制要求fxs序列顶底交替
+            # 默认情况下，fxs本身是顶底交替的，但是对于一些特殊情况下不是这样; 临时强制要求fxs序列顶底交替
             if len(fxs) >= 2 and fx.mark == fxs[-1].mark:
-                if envs.get_verbose():
-                    logger.info(f"\n\ncheck_fxs: 输入数据错误{'+' * 100}")
-                    logger.info(f"当前：{fx.mark}, 上个：{fxs[-1].mark}")
-                    for bar in fx.raw_bars:
-                        logger.info(f"{bar}\n")
-
-                    logger.info(f'last fx raw bars: \n')
-                    for bar in fxs[-1].raw_bars:
-                        logger.info(f"{bar}\n")
+                logger.error(f"check_fxs错误: {bars[i].dt}，{fx.mark}，{fxs[-1].mark}")
             else:
                 fxs.append(fx)
     return fxs
 
 
-def check_bi(bars: List[NewBar], benchmark: float = None):
+def check_bi(bars: List[NewBar], benchmark=None):
     """输入一串无包含关系K线，查找其中的一笔
 
     :param bars: 无包含关系K线列表
@@ -131,8 +122,8 @@ def check_bi(bars: List[NewBar], benchmark: float = None):
                     fx_b = fx
         else:
             raise ValueError
-    except:
-        logger.exception("笔识别错误")
+    except Exception as e:
+        logger.exception(f"笔识别错误: {e}")
         return None, bars
 
     bars_a = [x for x in bars if fx_a.elements[0].dt <= x.dt <= fx_b.elements[2].dt]
@@ -151,14 +142,7 @@ def check_bi(bars: List[NewBar], benchmark: float = None):
     if (not ab_include) and (len(bars_a) >= min_bi_len or power_enough):
         fxs_ = [x for x in fxs if fx_a.elements[0].dt <= x.dt <= fx_b.elements[2].dt]
         bi = BI(symbol=fx_a.symbol, fx_a=fx_a, fx_b=fx_b, fxs=fxs_, direction=direction, bars=bars_a)
-
-        low_ubi = min([x.low for y in bars_b for x in y.raw_bars])
-        high_ubi = max([x.high for y in bars_b for x in y.raw_bars])
-        if (bi.direction == Direction.Up and high_ubi > bi.high) \
-                or (bi.direction == Direction.Down and low_ubi < bi.low):
-            return None, bars
-        else:
-            return bi, bars_b
+        return bi, bars_b
     else:
         return None, bars
 
@@ -166,7 +150,7 @@ def check_bi(bars: List[NewBar], benchmark: float = None):
 class CZSC:
     def __init__(self,
                  bars: List[RawBar],
-                 get_signals: Callable = None,
+                 get_signals = None,
                  max_bi_num=envs.get_max_bi_num(),
                  ):
         """
@@ -223,7 +207,8 @@ class CZSC:
             logger.info(f"{self.symbol} - {self.freq} - {bars_ubi[-1].dt} 未完成笔延伸数量: {len(bars_ubi)}")
 
         if envs.get_bi_change_th() > 0.5 and len(self.bi_list) >= 5:
-            benchmark = min(self.bi_list[-1].power_price, np.mean([x.power_price for x in self.bi_list[-5:]]))
+            price_seq = [x.power_price for x in self.bi_list[-5:]]
+            benchmark = min(self.bi_list[-1].power_price, sum(price_seq) / len(price_seq))
         else:
             benchmark = None
 
@@ -237,7 +222,9 @@ class CZSC:
         bars_ubi = self.bars_ubi
         if (last_bi.direction == Direction.Up and bars_ubi[-1].high > last_bi.high) \
                 or (last_bi.direction == Direction.Down and bars_ubi[-1].low < last_bi.low):
-            self.bars_ubi = last_bi.bars[:-1] + [x for x in bars_ubi if x.dt >= last_bi.bars[-1].dt]
+            # 当前笔被破坏，将当前笔的bars与bars_ubi进行合并，并丢弃，这里容易出错，多一根K线就可能导致错误
+            # 必须是 -2，因为最后一根无包含K线有可能是未完成的
+            self.bars_ubi = last_bi.bars[:-2] + [x for x in bars_ubi if x.dt >= last_bi.bars[-2].dt]
             self.bi_list.pop(-1)
 
     def update(self, bar: RawBar):
@@ -261,7 +248,7 @@ class CZSC:
         for bar in last_bars:
             if len(bars_ubi) < 2:
                 bars_ubi.append(NewBar(symbol=bar.symbol, id=bar.id, freq=bar.freq, dt=bar.dt,
-                                       open=bar.open, close=bar.close,
+                                       open=bar.open, close=bar.close, amount=bar.amount,
                                        high=bar.high, low=bar.low, vol=bar.vol, elements=[bar]))
             else:
                 k1, k2 = bars_ubi[-2:]
@@ -292,7 +279,7 @@ class CZSC:
         else:
             self.signals = OrderedDict()
 
-    def to_echarts(self, width: str = "1400px", height: str = '580px', bs=None):
+    def to_echarts(self, width: str = "1400px", height: str = '580px', bs=[]):
         """绘制K线分析图
 
         :param width: 宽
@@ -306,8 +293,8 @@ class CZSC:
                  [{'dt': self.bi_list[-1].fx_b.dt, "bi": self.bi_list[-1].fx_b.fx}]
             fx = [{'dt': x.dt, "fx": x.fx} for x in self.fx_list]
         else:
-            bi = None
-            fx = None
+            bi = []
+            fx = []
         chart = kline_pro(kline, bi=bi, fx=fx, width=width, height=height, bs=bs,
                           title="{}-{}".format(self.symbol, self.freq.value))
         return chart
@@ -381,7 +368,8 @@ class CZSC:
     @property
     def ubi(self):
         """Unfinished Bi，未完成的笔"""
-        if not self.bars_ubi or not self.bi_list:
+        ubi_fxs = self.ubi_fxs
+        if not self.bars_ubi or not self.bi_list or not ubi_fxs:
             return None
 
         bars_raw = [y for x in self.bars_ubi for y in x.raw_bars]
@@ -399,8 +387,8 @@ class CZSC:
             "low_bar": low_bar,
             "bars": self.bars_ubi,
             "raw_bars": bars_raw,
-            "fxs": self.ubi_fxs,
-            "fx_a": self.ubi_fxs[0],
+            "fxs": ubi_fxs,
+            "fx_a": ubi_fxs[0],
         }
         return bi
 

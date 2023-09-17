@@ -34,7 +34,7 @@ def is_symmetry_zs(bis: List[BI], th: float = 0.3) -> bool:
     if len(bis) % 2 == 0:
         return False
 
-    zs = ZS(symbol=bis[0].symbol, bis=bis)
+    zs = ZS(bis=bis)
     if zs.zd > zs.zg or max([x.low for x in bis]) > min([x.high for x in bis]):
         return False
 
@@ -307,7 +307,7 @@ def get_zs_seq(bis: List[BI]) -> List[ZS]:
 
     for bi in bis:
         if not zs_list:
-            zs_list.append(ZS(symbol=bi.symbol, bis=[bi]))
+            zs_list.append(ZS(bis=[bi]))
             continue
 
         zs = zs_list[-1]
@@ -317,8 +317,85 @@ def get_zs_seq(bis: List[BI]) -> List[ZS]:
         else:
             if (bi.direction == Direction.Up and bi.high < zs.zd) \
                     or (bi.direction == Direction.Down and bi.low > zs.zg):
-                zs_list.append(ZS(symbol=bi.symbol, bis=[bi]))
+                zs_list.append(ZS(bis=[bi]))
             else:
                 zs.bis.append(bi)
                 zs_list[-1] = zs
     return zs_list
+
+
+def cross_zero_axis(n1: Union[List, np.ndarray], n2: Union[List, np.ndarray]) -> int:
+    """判断两个数列的零轴交叉点
+
+    :param n1: 数列1
+    :param n2: 数列2
+    :return: 交叉点所在的索引位置
+    """
+    assert len(n1) == len(n2), '输入两个数列长度不等'
+    axis_0 = np.zeros(len(n1))
+
+    n1 = np.flip(n1)
+    n2 = np.flip(n2)
+
+    x1 = np.where(n1[0] * n1 < axis_0, True, False)
+    x2 = np.where(n2[0] * n2 < axis_0, True, False)
+
+    num1 = np.argmax(x1[:-1] != x1[1:]) + 2 if np.any(x1) else 0
+    num2 = np.argmax(x2[:-1] != x2[1:]) + 2 if np.any(x2) else 0
+    return max(num1, num2)
+
+
+def cal_cross_num(cross: List, distance: int = 1) -> tuple:
+    """使用 distance 过滤掉fast_slow_cross函数返回值cross列表中
+    不符合要求的交叉点，返回处理后的金叉和死叉数值
+
+    :param cross: fast_slow_cross函数返回值
+    :param distance: 金叉和死叉之间的最小距离
+    :return: jc金叉值 ，SC死叉值
+    """
+    if len(cross) == 0:
+        return 0, 0
+    elif len(cross) == 1:
+        cross_ = cross
+    elif len(cross) == 2:
+        if cross[-1]['距离'] < distance:
+            cross_ = []
+        else:
+            cross_ = cross
+    else:
+        if cross[-1]['距离'] < distance:
+            last_cross = cross[-1]
+            del cross[-2]
+            re_cross = [i for i in cross if i['距离'] >= distance]
+            re_cross.append(last_cross)
+        else:
+            re_cross = [i for i in cross if i['距离'] >= distance]
+        cross_ = []
+        for i in range(0, len(re_cross)):
+            if len(cross_) >= 1 and re_cross[i]['类型'] == re_cross[i - 1]['类型']:
+                # 不将上一个元素加入cross_
+                del cross_[-1]
+                cross_.append(re_cross[i])
+            else:
+                cross_.append(re_cross[i])
+
+    jc = len([x for x in cross_ if x['类型'] == '金叉'])
+    sc = len([x for x in cross_ if x['类型'] == '死叉'])
+
+    return jc, sc
+
+
+def down_cross_count(x1: Union[List, np.array], x2: Union[List, np.array]) -> int:
+    """输入两个序列，计算 x1 下穿 x2 的次数
+
+    :param x1: list
+    :param x2: list
+    :return: int
+    """
+    x = np.array(x1) < np.array(x2)
+    num = 0
+    for i in range(len(x) - 1):
+        b1, b2 = x[i], x[i + 1]
+        if b2 and b1 != b2:
+            num += 1
+    return num
