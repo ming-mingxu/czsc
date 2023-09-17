@@ -180,8 +180,9 @@ def get_symbols(step):
     return stocks_map[step]
 
 
-def is_trade_time(dt: datetime = datetime.now()):
+def is_trade_time(dt: datetime = None):
     """判断指定时间是否是交易时间"""
+    dt = dt or datetime.now()
     hm = dt.strftime("%H:%M")
     if hm < "09:15" or hm > "15:00":
         return False
@@ -189,10 +190,21 @@ def is_trade_time(dt: datetime = datetime.now()):
         return True
 
 
-def is_trade_day(dt: datetime = datetime.now()):
+def is_trade_day(dt: datetime = None):
     """判断指定日期是否是交易日"""
+    start_time = datetime.now()
+
+    dt = dt if dt else datetime.now()
     date = dt.strftime('%Y%m%d')
-    return True if xtdata.get_trading_dates('SH', date, date) else False
+
+    result = True if xtdata.get_trading_dates('SH', date, date) else False
+
+    end_time = datetime.now()
+
+    if (end_time - start_time).seconds > 300:  # 300 seconds = 5 minutes
+        result = False
+
+    return result
 
 
 class TraderCallback(XtQuantTraderCallback):
