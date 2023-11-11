@@ -3,11 +3,22 @@
 author: zengbin93
 email: zeng_bin8888@163.com
 create_dt: 2023/4/19 23:27
-describe: 
+describe: 绩效表现统计
 """
 import numpy as np
 import pandas as pd
-from typing import List
+
+
+def cal_break_even_point(seq) -> float:
+    """计算单笔收益序列的盈亏平衡点
+
+    :param seq: 单笔收益序列，数据样例：[0.01, 0.02, -0.01, 0.03, 0.02, -0.02, 0.01, -0.01, 0.02, 0.01]
+    :return: 盈亏平衡点
+    """
+    if sum(seq) < 0:
+        return 1.0
+    seq = np.cumsum(sorted(seq))                # type: ignore
+    return (np.sum(seq < 0) + 1) / len(seq)     # type: ignore
 
 
 def subtract_fee(df, fee=1):
@@ -19,7 +30,7 @@ def subtract_fee(df, fee=1):
     if 'n1b' not in df.columns:
         assert 'price' in df.columns, '当n1b列不存在时，price 列必须存在'
         df['n1b'] = (df['price'].shift(-1) / df['price'] - 1) * 10000
-    
+
     df['date'] = df['dt'].dt.date
     df['edge_pre_fee'] = df['pos'] * df['n1b']
     df['edge_post_fee'] = df['pos'] * df['n1b']
@@ -41,25 +52,40 @@ def daily_performance(daily_returns):
         [0.01, 0.02, -0.01, 0.03, 0.02, -0.02, 0.01, -0.01, 0.02, 0.01]
     :return: dict
     """
-    if isinstance(daily_returns, list):
-        daily_returns = np.array(daily_returns)
-    
+    daily_returns = np.array(daily_returns, dtype=np.float64)
+
     if len(daily_returns) == 0 or np.std(daily_returns) == 0 or all(x == 0 for x in daily_returns):
-        return {"年化": 0, "夏普": 0, "最大回撤": 0, "卡玛": 0, "日胜率": 0}
-    
+        return {"年化": 0, "夏普": 0, "最大回撤": 0, "卡玛": 0, "日胜率": 0,
+                "年化波动率": 0, "非零覆盖": 0, "盈亏平衡点": 0}
+
     annual_returns = np.sum(daily_returns) / len(daily_returns) * 252
     sharpe_ratio = np.mean(daily_returns) / np.std(daily_returns) * np.sqrt(252)
     cum_returns = np.cumsum(daily_returns)
-    max_drawdown = np.max(np.maximum.accumulate(cum_returns) - cum_returns)
+    dd = np.maximum.accumulate(cum_returns) - cum_returns
+    max_drawdown = np.max(dd)
     kama = annual_returns / max_drawdown if max_drawdown != 0 else 10
     win_pct = len(daily_returns[daily_returns > 0]) / len(daily_returns)
-    return {
+    annual_volatility = np.std(daily_returns) * np.sqrt(252)
+    none_zero_cover = len(daily_returns[daily_returns != 0]) / len(daily_returns)
+
+    # 计算最大新高时间
+    high_index = [i for i, x in enumerate(dd) if x == 0]
+    max_interval = 0
+    for i in range(len(high_index) - 1):
+        max_interval = max(max_interval, high_index[i + 1] - high_index[i])
+
+    sta = {
         "年化": round(annual_returns, 4),
         "夏普": round(sharpe_ratio, 2),
         "最大回撤": round(max_drawdown, 4),
         "卡玛": round(kama, 2),
         "日胜率": round(win_pct, 4),
+        "年化波动率": round(annual_volatility, 4),
+        "非零覆盖": round(none_zero_cover, 4),
+        "盈亏平衡点": round(cal_break_even_point(daily_returns), 4),
+        "最大新高时间": max_interval,
     }
+    return sta
 
 
 def daily_performance(daily_returns):
@@ -155,18 +181,6 @@ def net_value_stats(nv: pd.DataFrame, exclude_zero: bool = False, sub_cost=True)
     return res
 
 
-def cal_break_even_point(seq: List[float]) -> float:
-    """计算单笔收益序列的盈亏平衡点
-
-    :param seq: 单笔收益序列
-    :return: 盈亏平衡点
-    """
-    if sum(seq) < 0:
-        return 1.0
-    seq = np.cumsum(sorted(seq)) # type: ignore
-    return (np.sum(seq < 0) + 1) / len(seq) # type: ignore
-
-
 def evaluate_pairs(pairs: pd.DataFrame, trade_dir: str = "多空") -> dict:
     """评估开平交易记录的表现
 
@@ -210,7 +224,7 @@ def evaluate_pairs(pairs: pd.DataFrame, trade_dir: str = "多空") -> dict:
 
     if len(pairs) == 0:
         return p
-    
+
     if trade_dir in ["多头", "空头"]:
         pairs = pairs[pairs["交易方向"] == trade_dir]
     else:

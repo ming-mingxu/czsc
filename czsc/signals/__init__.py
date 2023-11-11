@@ -45,6 +45,7 @@ from czsc.signals.cxt import (
     cxt_bi_end_V230815,
     cxt_bi_stop_V230815,
     cxt_bi_trend_V230824,
+    cxt_bi_trend_V230913,
 )
 
 
@@ -204,6 +205,7 @@ from czsc.signals.tas import (
     tas_macd_bc_V230803,
     tas_macd_bc_V230804,
     tas_macd_bc_ubi_V230804,
+    tas_slope_V231019,
 )
 
 from czsc.signals.pos import (
