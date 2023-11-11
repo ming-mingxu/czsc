@@ -60,11 +60,13 @@ def format_stock_kline(kline: pd.DataFrame, freq: Freq) -> List[RawBar]:
         bars.append(bar)
     return bars
 
+
 def get_instrument_detail(symbol):
     """获取个股基本信息
     http://docs.thinktrader.net/pages/36f5df/#%E8%8E%B7%E5%8F%96%E5%90%88%E7%BA%A6%E5%9F%BA%E7%A1%80%E4%BF%A1%E6%81%AF
     """
     return xtdata.get_instrument_detail(symbol)
+
 
 def get_kline(symbol, period, start_time, end_time, count=-1, dividend_type='front_ratio', **kwargs):
     """获取 QMT K线数据，实盘、回测通用
@@ -154,6 +156,7 @@ def get_raw_bars(symbol, freq, sdt, edt, fq='前复权', **kwargs) -> List[RawBa
     bars = resample_bars(kline, freq, raw_bars=True)
     return bars
 
+
 def get_symbols(step):
     """获取择时策略投研不同阶段对应的标的列表
 
@@ -179,8 +182,9 @@ def get_symbols(step):
     return stocks_map[step]
 
 
-def is_trade_time(dt: datetime = datetime.now()):
+def is_trade_time(dt: datetime = None):
     """判断指定时间是否是交易时间"""
+    dt = dt or datetime.now()
     hm = dt.strftime("%H:%M")
     if hm < "09:15" or hm > "15:00":
         return False
@@ -188,10 +192,25 @@ def is_trade_time(dt: datetime = datetime.now()):
         return True
 
 
-def is_trade_day(dt: datetime = datetime.now()):
+def is_trade_day(dt: datetime = None):
     """判断指定日期是否是交易日"""
-    date = dt.strftime('%Y%m%d')
-    return True if xtdata.get_trading_dates('SH', date, date) else False
+    retry_cnt = 3
+    while retry_cnt:
+        start_time = datetime.now()
+
+        dt = dt if dt else datetime.now()
+        date = dt.strftime('%Y%m%d')
+
+        result = True if xtdata.get_trading_dates('SH', date, date) else False
+
+        end_time = datetime.now()
+
+        if (end_time - start_time).seconds > 300:  # 300 seconds = 5 minutes
+            retry_cnt -= 1
+            result = False
+            continue  # 如果超过5分钟得到的结果，可能就跨越了一个休眠，则这次结果无效
+
+    return result
 
 
 class TraderCallback(XtQuantTraderCallback):
