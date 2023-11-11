@@ -1,3 +1,5 @@
+import os
+os.environ['czsc_research_cache'] = r"E:\Download\CZSC投研数据"
 from loguru import logger
 from czsc import CzscSignals
 from collections import OrderedDict
