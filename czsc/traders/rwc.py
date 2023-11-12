@@ -5,6 +5,7 @@ email: zeng_bin8888@163.com
 create_dt: 2023/9/24 15:19
 describe: 策略持仓权重管理
 """
+import os
 import time
 import json
 import redis
@@ -14,18 +15,15 @@ from loguru import logger
 from datetime import datetime
 
 
-logger.disable(__name__)
-
-
 class RedisWeightsClient:
     """策略持仓权重收发客户端"""
 
-    version = "V231111"
+    version = "V231112"
 
-    def __init__(self, strategy_name, redis_url, **kwargs):
+    def __init__(self, strategy_name, redis_url=None, send_heartbeat=True, **kwargs):
         """
         :param strategy_name: str, 策略名
-        :param redis_url: str, redis连接字符串
+        :param redis_url: str, redis连接字符串, 默认为None, 即从环境变量 RWC_REDIS_URL 中读取
 
             For example::
 
@@ -41,19 +39,27 @@ class RedisWeightsClient:
             <https://www.iana.org/assignments/uri-schemes/prov/rediss>
             - ``unix://``: creates a Unix Domain Socket connection.
 
+        :param send_heartbeat: boolean, 是否发送心跳
+
+            如果为True，会在后台启动一个线程，每15秒向redis发送一次心跳，用于检测策略是否存活。
+            推荐在写入数据时设置为True，读取数据时设置为False，避免无用的心跳。
+
+        :param kwargs: dict, 其他参数
+
+            - key_prefix: str, redis中key的前缀，默认为 Weights
+            - heartbeat_prefix: str, 心跳key的前缀，默认为 heartbeat
         """
         self.strategy_name = strategy_name
-        self.redis_url = redis_url
+        self.redis_url = redis_url if redis_url else os.getenv("RWC_REDIS_URL")
         self.key_prefix = kwargs.get("key_prefix", "Weights")
 
-        self.heartbeat_client = redis.from_url(redis_url, decode_responses=True)
-        self.heartbeat_prefix = kwargs.get("heartbeat_prefix", "heartbeat")
-
-        thread_safe_pool = redis.BlockingConnectionPool.from_url(redis_url, decode_responses=True)
+        thread_safe_pool = redis.BlockingConnectionPool.from_url(self.redis_url, decode_responses=True)
         self.r = redis.Redis(connection_pool=thread_safe_pool)
         self.lua_publish = RedisWeightsClient.register_lua_publish(self.r)
 
-        if kwargs.get('send_heartbeat', True):
+        if send_heartbeat:
+            self.heartbeat_client = redis.from_url(self.redis_url, decode_responses=True)
+            self.heartbeat_prefix = kwargs.get("heartbeat_prefix", "heartbeat")
             self.heartbeat_thread = threading.Thread(target=self.__heartbeat, daemon=True)
             self.heartbeat_thread.start()
 
@@ -134,7 +140,17 @@ class RedisWeightsClient:
         """
         df = df.copy()
         df['dt'] = pd.to_datetime(df['dt'])
-        df = df.sort_values('dt')
+        logger.info(f"输入数据中有 {len(df)} 条权重信号")
+
+        # 去除单个品种下相邻时间权重相同的数据
+        _res = []
+        for _, dfg in df.groupby('symbol'):
+            dfg = dfg.sort_values('dt', ascending=True).reset_index(drop=True)
+            dfg = dfg[dfg['weight'].diff().fillna(1) != 0].copy()
+            _res.append(dfg)
+        df = pd.concat(_res, ignore_index=True)
+        df = df.sort_values(['dt']).reset_index(drop=True)
+        logger.info(f"去除单个品种下相邻时间权重相同的数据后，剩余 {len(df)} 条权重信号")
 
         if 'price' not in df.columns:
             df['price'] = 0
@@ -251,28 +267,53 @@ return cnt
         symbols = {x.split(":")[2] for x in keys}
         return list(symbols)
 
-    def get_last_weights(self, symbols=None, ignore_zero=True):
+    def get_last_weights(self, symbols=None, ignore_zero=True, lua=True):
         """获取最近的持仓权重
 
         :param symbols: list, 品种列表
         :param ignore_zero: boolean, 是否忽略权重为0的品种
+        :param lua: boolean, 是否使用 lua 脚本获取，默认为True
+            如果要全量获取，推荐使用 lua 脚本，速度更快；如果要获取指定 symbols，不推荐使用 lua 脚本。
         :return: pd.DataFrame
         """
-        symbols = symbols if symbols else self.get_symbols()
-        with self.r.pipeline() as pipe:
-            for symbol in symbols:
-                pipe.hgetall(f'{self.key_prefix}:{self.strategy_name}:{symbol}:LAST')
-            rows = pipe.execute()
+        if lua:
+            lua_script = """
+            local keys = redis.call('KEYS', ARGV[1])
+            local results = {}
+            for i=1, #keys do
+                results[i] = redis.call('HGETALL', keys[i])
+            end
+            return results
+            """
+            key_pattern = self.key_prefix + ':' + self.strategy_name + ':*:LAST'
+            results = self.r.eval(lua_script, 0, key_pattern)
+            rows = [dict(zip(r[::2], r[1::2])) for r in results]     # type: ignore
+            if symbols:
+                rows = [r for r in rows if r['symbol'] in symbols]
+
+        else:
+            symbols = symbols if symbols else self.get_symbols()
+            with self.r.pipeline() as pipe:
+                for symbol in symbols:
+                    pipe.hgetall(f'{self.key_prefix}:{self.strategy_name}:{symbol}:LAST')
+                rows = pipe.execute()
 
         dfw = pd.DataFrame(rows)
         dfw['weight'] = dfw['weight'].astype(float)
         dfw['dt'] = pd.to_datetime(dfw['dt'])
         if ignore_zero:
             dfw = dfw[dfw['weight'] != 0].copy().reset_index(drop=True)
+        dfw = dfw.sort_values(['dt', 'symbol']).reset_index(drop=True)
         return dfw
 
     def get_hist_weights(self, symbol, sdt, edt) -> pd.DataFrame:
-        """获取单个品种的持仓权重历史数据"""
+        """获取单个品种的持仓权重历史数据
+
+        :param symbol: str, 品种代码
+        :param sdt: str, 开始时间, eg: 20210924 10:19:00
+        :param edt: str, 结束时间, eg: 20220924 10:19:00
+        :return: pd.DataFrame
+        """
         start_score = pd.to_datetime(sdt).strftime('%Y%m%d%H%M%S')
         end_score = pd.to_datetime(edt).strftime('%Y%m%d%H%M%S')
         model_key = f'{self.key_prefix}:{self.strategy_name}:{symbol}'
@@ -298,21 +339,46 @@ return cnt
             except Exception:
                 ref = ref
             weights.append((self.strategy_name, symbol, dt, weight, price, ref))
+
         dfw = pd.DataFrame(weights, columns=['strategy_name', 'symbol', 'dt', 'weight', 'price', 'ref'])
+        dfw = dfw.sort_values('dt').reset_index(drop=True)
         return dfw
 
-    def get_all_weights(self):
-        """获取所有权重数据"""
-        keys = self.get_keys(f"{self.key_prefix}:{self.strategy_name}*")
-        if keys is None or len(keys) == 0:                          # type: ignore
-            return pd.DataFrame()
+    def get_all_weights(self, sdt=None, edt=None, ignore_zero=True) -> pd.DataFrame:
+        """获取所有权重数据
 
-        keys = [x for x in keys if len(x.split(":")[-1]) == 14]     # type: ignore
-        with self.r.pipeline() as pipe:
-            for key in keys:
-                pipe.hgetall(key)
-            rows = pipe.execute()
-        df = pd.DataFrame(rows)
+        :param sdt: str, 开始时间, eg: 20210924 10:19:00
+        :param edt: str, 结束时间, eg: 20220924 10:19:00
+        :param ignore_zero: boolean, 是否忽略权重为0的品种
+        :return: pd.DataFrame
+        """
+        lua_script = """
+        local keys = redis.call('KEYS', ARGV[1])
+        local results = {}
+        for i=1, #keys do
+            local last_part = keys[i]:match('([^:]+)$')
+            if #last_part == 14 and tonumber(last_part) ~= nil then
+                results[#results + 1] = redis.call('HGETALL', keys[i])
+            end
+        end
+        return results
+        """
+        key_pattern = self.key_prefix + ':' + self.strategy_name + ':*:*'
+        results = self.r.eval(lua_script, 0, key_pattern)
+        results = [dict(zip(r[::2], r[1::2])) for r in results]     # type: ignore
+
+        df = pd.DataFrame(results)
         df['dt'] = pd.to_datetime(df['dt'])
         df['weight'] = df['weight'].astype(float)
-        return df
+        df = df.sort_values(['dt', 'symbol']).reset_index(drop=True)
+
+        df1 = pd.pivot_table(df, index='dt', columns='symbol', values='weight').sort_index().ffill().fillna(0)
+        df1 = pd.melt(df1.reset_index(), id_vars='dt', value_vars=df1.columns, value_name='weight')     # type: ignore
+        if ignore_zero:
+            df1 = df1[df1['weight'] != 0].reset_index(drop=True)
+        if sdt:
+            df1 = df1[df1['dt'] >= pd.to_datetime(sdt)].reset_index(drop=True)
+        if edt:
+            df1 = df1[df1['dt'] <= pd.to_datetime(edt)].reset_index(drop=True)
+        df1 = df1.sort_values(['dt', 'symbol']).reset_index(drop=True)
+        return df1
