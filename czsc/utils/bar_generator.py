@@ -159,10 +159,10 @@ def resample_bars(df: pd.DataFrame, target_freq: Union[Freq, AnyStr], raw_bars=T
     if not isinstance(target_freq, Freq):
         target_freq = Freq(target_freq)
 
-    base_freq = kwargs.get('base_freq', None)
-    uni_times = df['dt'].head(2000).apply(lambda x: x.strftime("%H:%M")).unique().tolist()
-    _, market = check_freq_and_market(uni_times, freq=base_freq)
-
+    # base_freq = kwargs.get('base_freq', None)
+    # uni_times = df['dt'].head(2000).apply(lambda x: x.strftime("%H:%M")).unique().tolist()
+    # _, market = check_freq_and_market(uni_times, freq=base_freq)
+    market = "默认"
     df['freq_edt'] = df['dt'].apply(lambda x: freq_end_time(x, target_freq, market))
     dfk1 = df.groupby('freq_edt').agg(
         {'symbol': 'first', 'dt': 'last', 'open': 'first', 'close': 'last', 'high': 'max',
