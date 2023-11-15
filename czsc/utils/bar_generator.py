@@ -180,9 +180,11 @@ def resample_bars(df: pd.DataFrame, target_freq: Union[Freq, AnyStr], raw_bars=T
             row.update({'id': i, 'freq': target_freq})
             _bars.append(RawBar(**row))
 
-        if df['dt'].iloc[-1] < _bars[-1].dt:
-            # 清除最后一根未完成的K线
-            _bars.pop()
+        drop_unfinished_bar = kwargs.get('drop_unfinished_bar', True)
+        if drop_unfinished_bar:
+            if df['dt'].iloc[-1] < _bars[-1].dt:
+                # 清除最后一根未完成的K线
+                _bars.pop()
 
         return _bars
     else:
