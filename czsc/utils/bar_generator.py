@@ -159,10 +159,13 @@ def resample_bars(df: pd.DataFrame, target_freq: Union[Freq, AnyStr], raw_bars=T
     if not isinstance(target_freq, Freq):
         target_freq = Freq(target_freq)
 
-    # base_freq = kwargs.get('base_freq', None)
-    # uni_times = df['dt'].head(2000).apply(lambda x: x.strftime("%H:%M")).unique().tolist()
-    # _, market = check_freq_and_market(uni_times, freq=base_freq)
-    market = "默认"
+    base_freq = kwargs.get('base_freq', None)
+    if target_freq.value.endswith("分钟"):
+        uni_times = df['dt'].head(2000).apply(lambda x: x.strftime("%H:%M")).unique().tolist()
+        _, market = check_freq_and_market(uni_times, freq=base_freq)
+    else:
+        market = "默认"
+
     df['freq_edt'] = df['dt'].apply(lambda x: freq_end_time(x, target_freq, market))
     dfk1 = df.groupby('freq_edt').agg(
         {'symbol': 'first', 'dt': 'last', 'open': 'first', 'close': 'last', 'high': 'max',
@@ -177,9 +180,11 @@ def resample_bars(df: pd.DataFrame, target_freq: Union[Freq, AnyStr], raw_bars=T
             row.update({'id': i, 'freq': target_freq})
             _bars.append(RawBar(**row))
 
-        if df['dt'].iloc[-1] < _bars[-1].dt:
-            # 清除最后一根未完成的K线
-            _bars.pop()
+        drop_unfinished_bar = kwargs.get('drop_unfinished_bar', True)
+        if drop_unfinished_bar:
+            if df['dt'].iloc[-1] < _bars[-1].dt:
+                # 清除最后一根未完成的K线
+                _bars.pop()
 
         return _bars
     else:
