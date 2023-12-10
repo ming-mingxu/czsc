@@ -210,8 +210,8 @@ def is_trade_day(dt: datetime = None):
             result = False
             print('休眠跨越', start_time, end_time, dt)
             continue  # 如果超过5分钟得到的结果，可能就跨越了一个休眠，则这次结果无效
-        if result:
-            break
+        # if result:
+        break
     print('交易日判断', dt, result)
     return result
 
