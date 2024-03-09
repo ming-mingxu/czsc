@@ -194,9 +194,12 @@ def is_trade_time(dt: datetime = None):
 
 def is_trade_day(dt: datetime = None):
     """判断指定日期是否是交易日"""
+
     retry_cnt = 3
     while retry_cnt:
         start_time = datetime.now()
+        if start_time.weekday() in [5, 6]:
+            return False
 
         dt = dt if dt else datetime.now()
         date = dt.strftime('%Y%m%d')
